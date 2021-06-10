@@ -45,6 +45,7 @@
 #define CHUNK	(128*1024)
 //#define CHUNK 16384
 //#define dump
+#define compress
 
 int zlibCompress(char* source, char* dest, int level, size_t source_size, size_t* dest_size)
 {
@@ -113,7 +114,9 @@ int zlibCompress(char* source, char* dest, int level, size_t source_size, size_t
                 return Z_ERRNO;
             }
 	    */
-	    memcpy((void*)dest, (const void*)dest+dest_index, have*sizeof(char));
+      //printf("debug\n");
+	    memcpy((void*)dest+dest_index, (const void*)out, have*sizeof(char));
+      //printf("debug2\n");
             dest_index += have;
             if(dest_index>*dest_size)
             {
@@ -132,6 +135,101 @@ int zlibCompress(char* source, char* dest, int level, size_t source_size, size_t
     /* clean up and return */
     (void)deflateEnd(&strm);
     return Z_OK;
+}
+
+int zlibDecompress(char* source, char* dest, size_t source_size, int *decompress_size)
+{
+  int	dest_index = 0;
+  int source_index = 0;
+
+  int ret;
+  unsigned have;
+  z_stream strm;
+  unsigned char in[CHUNK];
+  unsigned char out[CHUNK];
+
+  /* allocate inflate state */
+  strm.zalloc = Z_NULL;
+  strm.zfree = Z_NULL;
+  strm.opaque = Z_NULL;
+  strm.avail_in = 0;
+  strm.next_in = Z_NULL;
+  ret = inflateInit(&strm);
+  if (ret != Z_OK)
+      return ret;
+
+  /* decompress until deflate stream ends or end of file */
+  do {
+      //printf("in: %d, source: %d\n", in, source);
+      //strm.avail_in = fread(in, 1, CHUNK, source);
+      //if (ferror(source)) {
+          //(void)inflateEnd(&strm);
+          //return Z_ERRNO;
+      //}
+
+      if(source_index + CHUNK <= source_size)
+    	{
+    		//flush = Z_NO_FLUSH;
+    		strm.avail_in = CHUNK;
+    		memcpy((void*)in, (const void*)source+source_index, strm.avail_in*sizeof(char));
+    		source_index += CHUNK;
+    	}
+    	else
+    	{
+    		//flush = Z_FINISH;
+    		strm.avail_in = (source_size-source_index);
+    		memcpy((void*)in, (const void*)source+source_index, strm.avail_in*sizeof(char));
+    		source_index = source_size;
+    	}
+
+    	if(source_index>source_size)
+    	{
+    		(void)inflateEnd(&strm);
+    		return Z_ERRNO;
+    	}
+
+      if (strm.avail_in == 0)
+          break;
+      strm.next_in = in;
+
+      /* run inflate() on input until output buffer not full */
+      do {
+          strm.avail_out = CHUNK;
+          strm.next_out = out;
+          ret = inflate(&strm, Z_NO_FLUSH);
+          assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
+          switch (ret) {
+          case Z_NEED_DICT:
+              ret = Z_DATA_ERROR;     /* and fall through */
+          case Z_DATA_ERROR:
+          case Z_MEM_ERROR:
+              (void)inflateEnd(&strm);
+              return ret;
+          }
+          have = CHUNK - strm.avail_out;
+          //printf("debug\n");
+          memcpy((void*)dest+dest_index, (const void*)out, have*sizeof(char));
+          //printf("debug2\n");
+                dest_index += have;
+                //if(dest_index>*dest_size)
+                //{
+                    //(void)inflateEnd(&strm);
+                    //return Z_ERRNO;
+                //}
+          //if (fwrite(out, 1, have, dest) != have || ferror(dest)) {
+              //(void)inflateEnd(&strm);
+              //return Z_ERRNO;
+          //}
+      } while (strm.avail_out == 0);
+
+      /* done when inflate() says it's done */
+  } while (ret != Z_STREAM_END);
+
+  *decompress_size = dest_index;
+
+  /* clean up and return */
+  (void)inflateEnd(&strm);
+  return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
 }
 
 load_args get_base_args(network *net)
@@ -361,21 +459,36 @@ network make_network(int n)
 
 void forward_network(network net, network_state state)
 {
+    // Open file to write to
+    FILE *fp;
+    fp = fopen("output.csv", "w+");
+    fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression time\n");  // print headers to output file
+
+    // Array containing layers we want to save
+    // Choose layers towards beginning and end, only convolutional layers
+    int layer_nums[18] = {0,1,9,22,25,26,50,51,62,75,76,84,91,92,100,101,104,105};
+
+    float compression_ratio, compression_time, output_size, layer_exec_time; // output_size is in KBytes
+    int* output_decompress_size;  // size of output of Decompress function
+
     const size_t max_dest_size = 608 * 608 * 32 * sizeof(float);
     char* dest = malloc(max_dest_size);
 
     state.workspace = net.workspace;
     int i;
     for(i = 0; i < net.n; ++i){
+        double start_layer_exec_time = get_time_point(); // Layer execution starting time
         state.index = i;
         layer l = net.layers[i];
         if(l.delta && state.train){
             scal_cpu(l.outputs * l.batch, 0, l.delta, 1);
         }
-        //double time = get_time_point();
+
         l.forward(l, state);
-        //printf("%d - Predicted in %lf milli-seconds.\n", i, ((double)get_time_point() - time) / 1000);
-	
+
+        // Get network_accuracy, not sure how to do this
+        //double net_acc = network_accuracy(net, );
+
         #ifdef dump
         dumpData(i,l.output,l.outputs);
         #endif
@@ -383,19 +496,61 @@ void forward_network(network net, network_state state)
         #ifdef compress
         size_t dest_size = max_dest_size;
 
-        if(zlibCompress((char*)l.output, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK)
-        {
-            printf("compression failed!\n");
+        double start_compress_time = get_time_point(); // Compression starting time
+
+        if(i == 0){ // Compress and decompress only layer 0
+          if(zlibCompress((char*)l.output, dest, Z_BEST_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK)
+          {
+              printf("compression failed!\n");
+              exit(1);
+          }
+
+
+          printf("dest_size before zlibDecompress: %d\n", dest_size);
+          int function_out = zlibDecompress(dest, (char*)l.output, dest_size, &output_decompress_size);
+          printf("dest_size after zlibDecompress: %d\n", output_decompress_size);
+
+          if(function_out != Z_OK)
+          {
+              printf("decompression failed!\n");
+              printf("Z_OK: %d\n", function_out);
+              exit(1);
+          }
+
+          compression_ratio = ((float)dest_size)/(l.outputs*sizeof(float));
+          if(compression_ratio > 1){  // throw error if compression ratio over 1
+            printf("compression ratio greater than 1!\n");
             exit(1);
+          }
+          printf("%d - Compression ratio: %f\n", i, compression_ratio); // Print to terminal
+
         }
 
-        printf("compression ratio: %f\n", ((float)dest_size)/(l.outputs*sizeof(float)));
-        #endif	
+        compression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression ending time
+        output_size = (float)dest_size / 1000;
+
+        #endif
 
         state.input = l.output;
+        layer_exec_time = ((double)get_time_point() - start_layer_exec_time) / 1000; // Layer execution ending time
+
+        printf("%d - Layer execution time of %lf milli-seconds.\n", i, layer_exec_time);  // Print to terminal
+        printf("%d - Compression time of %lf milli-seconds.\n", i, compression_time); // Print to terminal
+
+        for(int j = 0; j < sizeof(layer_nums)/sizeof(layer_nums[0]); j++){
+          if(i == layer_nums[j]){ // if the layer we are on is in our layer_nums array
+            fprintf(fp, "%f,", output_size);  // Output size in KBytes
+            fprintf(fp, "%f,", layer_exec_time); // Output layer execution time
+            fprintf(fp, "%f,", compression_ratio); // Write compression ratio to csv
+            fprintf(fp, "%lf\n", compression_time); // Write compression time to csv
+          }
+        }
+
     }
 
     free(dest);
+
+    fclose(fp); // close file we were writing to
 }
 
 void update_network(network net)
@@ -769,7 +924,7 @@ image get_network_image_layer(network net, int i)
     layer l = net.layers[i];
 #ifdef GPU
     cuda_pull_array(l.output_gpu, l.output, l.outputs);
-#endif    
+#endif
     if (l.out_w && l.out_h && l.out_c){
         return float_to_image(l.out_w, l.out_h, l.out_c, l.output);
     }
