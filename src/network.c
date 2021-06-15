@@ -47,6 +47,21 @@
 //#define dump
 #define compress
 
+/// Fixed-point Format: 11.5 (16-bit)
+typedef uint16_t fixed_point_t;
+#define FIXED_POINT_FRACTIONAL_BITS 5 // macro for the number of fractional bits
+
+// converstion functions
+// convert 11.5 format -> double
+double fixed_to_float(fixed_point_t input){
+  return ((double)input / (double)(1 << FIXED_POINT_FRACTIONAL_BITS));
+}
+
+// converts double to 11.5 Format
+fixed_point_t float_to_fixed(double input){
+  return (fixed_point_t)(round(input * (1 << FIXED_POINT_FRACTIONAL_BITS)));
+}
+
 int zlibCompress(char* source, char* dest, int level, size_t source_size, size_t* dest_size)
 {
     int	dest_index = 0;
@@ -474,6 +489,13 @@ void forward_network(network net, network_state state)
     const size_t max_dest_size = 608 * 608 * 32 * sizeof(float);
     char* dest = malloc(max_dest_size);
 
+    // define array for fixed point
+    // CHECK THIS BLOCK OF CODE
+    //const size_t max_int_array_size = 608 * 608 * 32 * sizeof(uint16_t);
+    //uint16_t* array0 = malloc(max_int_array_size);
+    //printf("size of int array: %d\n",sizeof(array0));
+    //printf("size of float array: %d\n",sizeof(dest));
+
     state.workspace = net.workspace;
     int i;
     for(i = 0; i < net.n; ++i){
@@ -486,9 +508,6 @@ void forward_network(network net, network_state state)
 
         l.forward(l, state);
 
-        // Get network_accuracy, not sure how to do this
-        //double net_acc = network_accuracy(net, );
-
         #ifdef dump
         dumpData(i,l.output,l.outputs);
         #endif
@@ -498,8 +517,20 @@ void forward_network(network net, network_state state)
 
         double start_compress_time = get_time_point(); // Compression starting time
 
+        // convert to fixed point
+        // input: l.output(4 bytes * w * h * c)
+        // output: array0 (2 bytes * w * h * c) unit16_t
+        /*
+        for(int j = 0; j < sizeof((char*)l.output) / sizeof(char*); j++){
+          array0[j] = float_to_fixed(l.output[j]);
+          //printf("%d\n", sizeof(l.output));
+          //printf("%d: %d\n", j, array0[j]);
+        }
+        */
         if(i == 0){ // Compress and decompress only layer 0
-          if(zlibCompress((char*)l.output, dest, Z_BEST_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK)
+
+          // input to compression is array0, output is dest
+          if(zlibCompress((char*)l.output, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK)
           {
               printf("compression failed!\n");
               exit(1);
@@ -507,9 +538,18 @@ void forward_network(network net, network_state state)
 
 
           printf("dest_size before zlibDecompress: %d\n", dest_size);
+          // input to decompress is dest, output is array0
           int function_out = zlibDecompress(dest, (char*)l.output, dest_size, &output_decompress_size);
           printf("dest_size after zlibDecompress: %d\n", output_decompress_size);
 
+          // convert back to float
+          // input: array0
+          // output: l.output
+          /*
+          for(int j = 0; j < sizeof(array0) / sizeof(uint16_t); j++){
+            l.output[j] = fixed_to_float(array0[j]);
+          }
+          */
           if(function_out != Z_OK)
           {
               printf("decompression failed!\n");
