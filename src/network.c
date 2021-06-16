@@ -48,7 +48,7 @@
 #define compress
 //#define dump
 /// Fixed-point Format: 11.5 (16-bit)
-typedef uint16_t fixed_point_t;
+typedef int16_t fixed_point_t; // changed to signed
 #define FIXED_POINT_FRACTIONAL_BITS 5 // macro for the number of fractional bits
 
 // converstion functions
@@ -490,9 +490,9 @@ void forward_network(network net, network_state state)
     char* dest = malloc(max_dest_size);
 
     // define array for fixed point
-    // CHECK THIS BLOCK OF CODE
-    //const size_t max_int_array_size = 608 * 608 * 32 * sizeof(uint16_t);
-    //uint16_t* array0 = malloc(max_int_array_size);
+    // CHECK THIS BLOCK OF CODE- change to signed int
+    const size_t max_int_array_size = 608 * 608 * 32 * sizeof(uint16_t);  // create maximum size array for fixed point numbers
+    int16_t* array0 = malloc(max_int_array_size);
     //printf("size of int array: %d\n",sizeof(array0));
     //printf("size of float array: %d\n",sizeof(dest));
 
@@ -520,17 +520,16 @@ void forward_network(network net, network_state state)
         // convert to fixed point
         // input: l.output(4 bytes * w * h * c)
         // output: array0 (2 bytes * w * h * c) unit16_t
-        /*
-        for(int j = 0; j < sizeof((char*)l.output) / sizeof(char*); j++){
+
+        for(int j = 0; j < l.outputs; j++){ // conver float to fixed point numbers
           array0[j] = float_to_fixed(l.output[j]);
-          //printf("%d\n", sizeof(l.output));
-          //printf("%d: %d\n", j, array0[j]);
         }
-        */
+
         if(i == 0){ // Compress and decompress only layer 0
 
           // input to compression is array0, output is dest
-          if(zlibCompress((char*)l.output, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK)
+          // original input to compression is (char*)l.output, output is dest
+          if(zlibCompress(array0, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK)
           {
               printf("compression failed!\n");
               exit(1);
@@ -539,17 +538,18 @@ void forward_network(network net, network_state state)
 
           printf("dest_size before zlibDecompress: %d\n", dest_size);
           // input to decompress is dest, output is array0
-          int function_out = zlibDecompress(dest, (char*)l.output, dest_size, &output_decompress_size);
+          // original input to decompress is dest, output is (char*)l.output
+          int function_out = zlibDecompress(dest, array0, dest_size, &output_decompress_size);
           printf("dest_size after zlibDecompress: %d\n", output_decompress_size);
 
           // convert back to float
           // input: array0
           // output: l.output
-          /*
-          for(int j = 0; j < sizeof(array0) / sizeof(uint16_t); j++){
+
+          for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
             l.output[j] = fixed_to_float(array0[j]);
           }
-          */
+
           if(function_out != Z_OK)
           {
               printf("decompression failed!\n");
