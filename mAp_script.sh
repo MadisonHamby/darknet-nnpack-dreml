@@ -11,5 +11,5 @@ do
     #echo "$i\n"
 
     # Save det-results.txt as 25000.txt in data/ZurichMAV/DetectionResults
-    cp det_result.txt data/ZurichMAV/DetectionResults/$i.txt
+    cp det_result.txt /home/madison/mAP/input/detection-results/$i.txt
 done
