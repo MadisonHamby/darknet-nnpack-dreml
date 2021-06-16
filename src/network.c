@@ -477,8 +477,8 @@ void forward_network(network net, network_state state)
     // Open file to write to
     FILE *fp;
     fp = fopen("output.csv", "w+");
-    //fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression time\n");  // print headers to output file
-    fprintf(fp, "Layer #, Tensor Value\n");
+    fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression time\n");  // print headers to output file
+    //fprintf(fp, "Layer #, Tensor Value\n");
     // Array containing layers we want to save
     // Choose layers towards beginning and end, only convolutional layers
     int layer_nums[18] = {0,1,9,22,25,26,50,51,62,75,76,84,91,92,100,101,104,105};
@@ -578,12 +578,13 @@ void forward_network(network net, network_state state)
         printf("%d - Compression time of %lf milli-seconds.\n", i, compression_time); // Print to terminal
         int counter = 0;
 
+        /*
         for(int j = 0; j < l.outputs; j++){
           fprintf(fp,"%d,%lf\n", i, l.output[j]);
           //counter = counter + 1;
         }
+        */
 
-        /*
         for(int j = 0; j < sizeof(layer_nums)/sizeof(layer_nums[0]); j++){
           if(i == layer_nums[j]){ // if the layer we are on is in our layer_nums array
             fprintf(fp, "%f,", output_size);  // Output size in KBytes
@@ -592,7 +593,7 @@ void forward_network(network net, network_state state)
             fprintf(fp, "%lf\n", compression_time); // Write compression time to csv
           }
         }
-        */
+
       //printf("counter is: %d\n", counter);
     }
 
