@@ -576,7 +576,13 @@ void forward_network(network net, network_state state)
 
         printf("%d - Layer execution time of %lf milli-seconds.\n", i, layer_exec_time);  // Print to terminal
         printf("%d - Compression time of %lf milli-seconds.\n", i, compression_time); // Print to terminal
-        fprintf(fp,"%d,%lf\n", i, l.output[0]);
+        int counter = 0;
+        if(i == 0){
+          for(int j = 0; j < l.outputs; j++){
+            fprintf(fp,"%d,%lf\n", i, l.output[j]);
+            //counter = counter + 1;
+          }
+        }
         /*
         for(int j = 0; j < sizeof(layer_nums)/sizeof(layer_nums[0]); j++){
           if(i == layer_nums[j]){ // if the layer we are on is in our layer_nums array
@@ -587,6 +593,7 @@ void forward_network(network net, network_state state)
           }
         }
         */
+      //printf("counter is: %d\n", counter);
     }
 
     free(dest);
