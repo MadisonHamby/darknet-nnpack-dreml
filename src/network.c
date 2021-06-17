@@ -47,9 +47,9 @@
 //#define dump
 #define compress
 //#define dump
-/// Fixed-point Format: 11.5 (16-bit)
-typedef int16_t fixed_point_t; // changed to signed
-#define FIXED_POINT_FRACTIONAL_BITS 5 // macro for the number of fractional bits
+/// Fixed-point Format: 8.2 (8-bit)
+typedef int8_t fixed_point_t; // changed to signed
+#define FIXED_POINT_FRACTIONAL_BITS 2 // macro for the number of fractional bits
 
 // converstion functions
 // convert 11.5 format -> double
@@ -491,8 +491,8 @@ void forward_network(network net, network_state state)
 
     // define array for fixed point
     // CHECK THIS BLOCK OF CODE- change to signed int
-    const size_t max_int_array_size = 608 * 608 * 32 * sizeof(uint16_t);  // create maximum size array for fixed point numbers
-    int16_t* array0 = malloc(max_int_array_size);
+    const size_t max_int_array_size = 608 * 608 * 32 * sizeof(int8_t);  // create maximum size array for fixed point numbers
+    int8_t* array0 = malloc(max_int_array_size);
     //printf("size of int array: %d\n",sizeof(array0));
     //printf("size of float array: %d\n",sizeof(dest));
 
