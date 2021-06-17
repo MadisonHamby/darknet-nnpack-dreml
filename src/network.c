@@ -634,11 +634,11 @@ void forward_network(network net, network_state state)
             fprintf(fp, "%f,", output_size);  // Output size in KBytes
             fprintf(fp, "%f,", layer_exec_time); // Output layer execution time
             fprintf(fp, "%f,", compression_ratio); // Write compression ratio to csv
-            fprintf(fp, "%lf\n", compression_time); // Write compression time to csv
             #ifdef compress_fixed
             fprintf(fp, "%f,", float_to_fixed_time);  // Write float to fixed time
             fprintf(fp, "%f,", fixed_to_float_time);  // Write fixed to float time
             #endif
+            fprintf(fp, "%lf\n", compression_time); // Write compression time to csv
           }
         }
 
