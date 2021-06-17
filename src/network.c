@@ -621,10 +621,11 @@ void forward_network(network net, network_state state)
 
 
         // prints tensor number to output.csv
+	/*
         for(int j = 0; j < l.outputs; j++){
           fprintf(fp,"%d,%lf\n", i, l.output[j]);
         }
-
+        */   
 
         // prints output size, execution time, compression ratio, and compression time for each layer in layer_nums array
         /*
