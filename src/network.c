@@ -46,18 +46,19 @@
 //#define CHUNK 16384
 //#define dump
 #define compress
+//#define compress_fixed
 //#define dump
 /// Fixed-point Format: 8.2 (8-bit)
 typedef int8_t fixed_point_t; // changed to signed
 #define FIXED_POINT_FRACTIONAL_BITS 2 // macro for the number of fractional bits
 
 // converstion functions
-// convert 11.5 format -> double
+// convert fixed point to double
 double fixed_to_float(fixed_point_t input){
   return ((double)input / (double)(1 << FIXED_POINT_FRACTIONAL_BITS));
 }
 
-// converts double to 11.5 Format
+// converts double to fixed point
 fixed_point_t float_to_fixed(double input){
   return (fixed_point_t)(round(input * (1 << FIXED_POINT_FRACTIONAL_BITS)));
 }
@@ -477,24 +478,17 @@ void forward_network(network net, network_state state)
     // Open file to write to
     FILE *fp;
     fp = fopen("output.csv", "w+");
-    fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression time\n");  // print headers to output file
-    //fprintf(fp, "Layer #, Tensor Value\n");
+    //fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
+    fprintf(fp, "Layer #, Tensor Value\n");
     // Array containing layers we want to save
     // Choose layers towards beginning and end, only convolutional layers
     int layer_nums[18] = {0,1,9,22,25,26,50,51,62,75,76,84,91,92,100,101,104,105};
 
     float compression_ratio, compression_time, output_size, layer_exec_time; // output_size is in KBytes
-    int* output_decompress_size;  // size of output of Decompress function
+    size_t* output_decompress_size;  // size of output of Decompress function
 
     const size_t max_dest_size = 608 * 608 * 32 * sizeof(float);
     char* dest = malloc(max_dest_size);
-
-    // define array for fixed point
-    // CHECK THIS BLOCK OF CODE- change to signed int
-    const size_t max_int_array_size = 608 * 608 * 32 * sizeof(int8_t);  // create maximum size array for fixed point numbers
-    int8_t* array0 = malloc(max_int_array_size);
-    //printf("size of int array: %d\n",sizeof(array0));
-    //printf("size of float array: %d\n",sizeof(dest));
 
     state.workspace = net.workspace;
     int i;
@@ -512,62 +506,110 @@ void forward_network(network net, network_state state)
         dumpData(i,l.output,l.outputs);
         #endif
 
+        #ifdef compress_fixed
+
+        // define array for fixed point
+        // CHECK THIS BLOCK OF CODE- change to signed int
+        // change sizeof(...) to whichever variable type matches the following line
+        const size_t max_int_array_size = 608 * 608 * 32 * sizeof(int8_t);  // create maximum size array for fixed point numbers
+        int8_t* array0 = malloc(max_int_array_size);
+
+        size_t dest_size = max_dest_size;
+
+        double float_to_fixed_time, fixed_to_float_time;
+        double start_compress_time = get_time_point(); // Compression starting time
+
+        // convert to fixed point
+        // input: l.output(4 bytes * w * h * c)
+        // output: array0 (2 bytes * w * h * c)
+        double start_float_to_fixed_time = get_time_point();  // Float to fixed starting time
+        for(int j = 0; j < l.outputs; j++){ // convert float to fixed point numbers
+          array0[j] = float_to_fixed(l.output[j]);
+        }
+        float_to_fixed_time = ((double)get_time_point() - start_float_to_fixed_time) / 1000;
+
+
+
+        // input to compression is array0, output is dest when using fixed point
+        // original input to compression is (char*)l.output, output is dest
+        // l.outputs*sizeof(...)
+        if(zlibCompress(array0, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK)
+        {
+            printf("compression failed!\n");
+            exit(1);
+        }
+
+
+        printf("dest_size before zlibDecompress: %d\n", dest_size);
+        // input to decompress is dest, output is array0 when using fixed point
+        int function_out = zlibDecompress(dest, array0, dest_size, &output_decompress_size);
+        printf("dest_size after zlibDecompress: %d\n", output_decompress_size);
+
+        // convert back to float
+        // input: array0
+        // output: l.output
+        double start_fixed_to_float_time = get_time_point();  // Float to fixed starting time
+        for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
+          l.output[j] = fixed_to_float(array0[j]);
+        }
+        fixed_to_float_time = ((double)get_time_point() - start_fixed_to_float_time_to_fixed_time) / 1000;
+
+        if(function_out != Z_OK)
+        {
+            printf("decompression failed!\n");
+            printf("Z_OK: %d\n", function_out);
+            exit(1);
+        }
+
+        compression_ratio = ((float)dest_size)/(l.outputs*sizeof(float));
+        if(compression_ratio > 1){  // throw error if compression ratio over 1
+          printf("compression ratio greater than 1!\n");
+          exit(1);
+        }
+        printf("%d - Compression ratio: %f\n", i, compression_ratio); // Print to terminal
+
+        compression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression ending time with float to fixed added in
+        output_size = (float)dest_size / 1000;
+
+
+        #endif
+
         #ifdef compress
         size_t dest_size = max_dest_size;
 
         double start_compress_time = get_time_point(); // Compression starting time
 
-        // convert to fixed point
-        // input: l.output(4 bytes * w * h * c)
-        // output: array0 (2 bytes * w * h * c) unit16_t
 
-        for(int j = 0; j < l.outputs; j++){ // conver float to fixed point numbers
-          array0[j] = float_to_fixed(l.output[j]);
-        }
-
-        if(i == 0){ // Compress and decompress only layer 0
-
-          // input to compression is array0, output is dest
-          // original input to compression is (char*)l.output, output is dest
-          if(zlibCompress(array0, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK)
-          {
-              printf("compression failed!\n");
-              exit(1);
-          }
-
-
-          printf("dest_size before zlibDecompress: %d\n", dest_size);
-          // input to decompress is dest, output is array0
-          // original input to decompress is dest, output is (char*)l.output
-          int function_out = zlibDecompress(dest, array0, dest_size, &output_decompress_size);
-          printf("dest_size after zlibDecompress: %d\n", output_decompress_size);
-
-          // convert back to float
-          // input: array0
-          // output: l.output
-
-          for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
-            l.output[j] = fixed_to_float(array0[j]);
-          }
-
-          if(function_out != Z_OK)
-          {
-              printf("decompression failed!\n");
-              printf("Z_OK: %d\n", function_out);
-              exit(1);
-          }
-
-          compression_ratio = ((float)dest_size)/(l.outputs*sizeof(float));
-          if(compression_ratio > 1){  // throw error if compression ratio over 1
-            printf("compression ratio greater than 1!\n");
+        // input to compression is (char*)l.output, output is dest
+        if(zlibCompress((char*)l.output, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK)
+        {
+            printf("compression failed!\n");
             exit(1);
-          }
-          printf("%d - Compression ratio: %f\n", i, compression_ratio); // Print to terminal
-
         }
 
-        compression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression ending time
-        output_size = (float)dest_size / 1000;
+        printf("dest_size before zlibDecompress: %d\n", dest_size);
+        // input to decompress is dest, output is (char*)l.output
+        int function_out = zlibDecompress(dest, (char*)l.output, dest_size, &output_decompress_size);
+        printf("dest_size after zlibDecompress: %d\n", output_decompress_size);
+
+        if(function_out != Z_OK)
+        {
+            printf("decompression failed!\n");
+            printf("Z_OK: %d\n", function_out);
+            exit(1);
+        }
+
+        compression_ratio = ((float)dest_size)/(l.outputs*sizeof(float));
+        if(compression_ratio > 1){  // throw error if compression ratio over 1
+          printf("compression ratio greater than 1!\n");
+          exit(1);
+        }
+        printf("%d - Compression ratio: %f\n", i, compression_ratio); // Print to terminal
+
+
+
+        compression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression and decompression ending time
+        output_size = (float)dest_size / 1000;  // layer output size
 
         #endif
 
@@ -576,14 +618,15 @@ void forward_network(network net, network_state state)
 
         printf("%d - Layer execution time of %lf milli-seconds.\n", i, layer_exec_time);  // Print to terminal
         printf("%d - Compression time of %lf milli-seconds.\n", i, compression_time); // Print to terminal
-        int counter = 0;
 
-        /*
+
+        // prints tensor number to output.csv
         for(int j = 0; j < l.outputs; j++){
           fprintf(fp,"%d,%lf\n", i, l.output[j]);
-          //counter = counter + 1;
         }
-        */
+
+
+        // prints output size, execution time, compression ratio, and compression time for each layer in layer_nums array
 
         for(int j = 0; j < sizeof(layer_nums)/sizeof(layer_nums[0]); j++){
           if(i == layer_nums[j]){ // if the layer we are on is in our layer_nums array
@@ -591,10 +634,14 @@ void forward_network(network net, network_state state)
             fprintf(fp, "%f,", layer_exec_time); // Output layer execution time
             fprintf(fp, "%f,", compression_ratio); // Write compression ratio to csv
             fprintf(fp, "%lf\n", compression_time); // Write compression time to csv
+            #ifdef compress_fixed
+            fprintf(fp, "%f,", float_to_fixed_time);  // Write float to fixed time
+            fprintf(fp, "%f,", fixed_to_float_time);  // Write fixed to float time
+            #endif
           }
         }
 
-      //printf("counter is: %d\n", counter);
+
     }
 
     free(dest);
