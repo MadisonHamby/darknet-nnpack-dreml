@@ -627,7 +627,7 @@ void forward_network(network net, network_state state)
 
 
         // prints output size, execution time, compression ratio, and compression time for each layer in layer_nums array
-
+        /*
         for(int j = 0; j < sizeof(layer_nums)/sizeof(layer_nums[0]); j++){
           if(i == layer_nums[j]){ // if the layer we are on is in our layer_nums array
             fprintf(fp, "%f,", output_size);  // Output size in KBytes
@@ -640,6 +640,7 @@ void forward_network(network net, network_state state)
             #endif
           }
         }
+        */
 
 
     }
