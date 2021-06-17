@@ -45,12 +45,12 @@
 #define CHUNK	(128*1024)
 //#define CHUNK 16384
 //#define dump
-#define compress
-//#define compress_fixed
+//#define compress
+#define compress_fixed
 //#define dump
 /// Fixed-point Format: 8.2 (8-bit)
-typedef int8_t fixed_point_t; // changed to signed
-#define FIXED_POINT_FRACTIONAL_BITS 2 // macro for the number of fractional bits
+typedef int16_t fixed_point_t; // changed to signed
+#define FIXED_POINT_FRACTIONAL_BITS 5 // macro for the number of fractional bits
 
 // converstion functions
 // convert fixed point to double
@@ -478,8 +478,8 @@ void forward_network(network net, network_state state)
     // Open file to write to
     FILE *fp;
     fp = fopen("output.csv", "w+");
-    //fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
-    fprintf(fp, "Layer #, Tensor Value\n");
+    fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
+    //fprintf(fp, "Layer #, Tensor Value\n");
     // Array containing layers we want to save
     // Choose layers towards beginning and end, only convolutional layers
     int layer_nums[18] = {0,1,9,22,25,26,50,51,62,75,76,84,91,92,100,101,104,105};
@@ -512,7 +512,7 @@ void forward_network(network net, network_state state)
         // CHECK THIS BLOCK OF CODE- change to signed int
         // change sizeof(...) to whichever variable type matches the following line
         const size_t max_int_array_size = 608 * 608 * 32 * sizeof(int8_t);  // create maximum size array for fixed point numbers
-        int8_t* array0 = malloc(max_int_array_size);
+        int16_t* array0 = malloc(max_int_array_size);
 
         size_t dest_size = max_dest_size;
 
@@ -533,7 +533,7 @@ void forward_network(network net, network_state state)
         // input to compression is array0, output is dest when using fixed point
         // original input to compression is (char*)l.output, output is dest
         // l.outputs*sizeof(...)
-        if(zlibCompress(array0, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK)
+        if(zlibCompress(array0, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(int16_t), &dest_size) != Z_OK)
         {
             printf("compression failed!\n");
             exit(1);
@@ -552,7 +552,7 @@ void forward_network(network net, network_state state)
         for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
           l.output[j] = fixed_to_float(array0[j]);
         }
-        fixed_to_float_time = ((double)get_time_point() - start_fixed_to_float_time_to_fixed_time) / 1000;
+        fixed_to_float_time = ((double)get_time_point() - start_fixed_to_float_time) / 1000;
 
         if(function_out != Z_OK)
         {
@@ -621,14 +621,14 @@ void forward_network(network net, network_state state)
 
 
         // prints tensor number to output.csv
-	/*
+	       /*
         for(int j = 0; j < l.outputs; j++){
           fprintf(fp,"%d,%lf\n", i, l.output[j]);
         }
-        */   
+        */
 
         // prints output size, execution time, compression ratio, and compression time for each layer in layer_nums array
-        /*
+
         for(int j = 0; j < sizeof(layer_nums)/sizeof(layer_nums[0]); j++){
           if(i == layer_nums[j]){ // if the layer we are on is in our layer_nums array
             fprintf(fp, "%f,", output_size);  // Output size in KBytes
@@ -641,7 +641,7 @@ void forward_network(network net, network_state state)
             #endif
           }
         }
-        */
+
 
 
     }
