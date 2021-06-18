@@ -45,8 +45,8 @@
 #define CHUNK	(128*1024)
 //#define CHUNK 16384
 //#define dump
-//#define compress
-#define compress_fixed
+#define compress
+//#define compress_fixed
 //#define dump
 /// Fixed-point Format: 8.2 (8-bit)
 typedef int16_t fixed_point_t; // changed to signed
@@ -478,8 +478,8 @@ void forward_network(network net, network_state state)
     // Open file to write to
     FILE *fp;
     fp = fopen("output.csv", "w+");
-    fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
-    //fprintf(fp, "Layer #, Tensor Value\n");
+    //fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
+    fprintf(fp, "Layer #, Tensor Value\n");
     // Array containing layers we want to save
     // Choose layers towards beginning and end, only convolutional layers
     int layer_nums[18] = {0,1,9,22,25,26,50,51,62,75,76,84,91,92,100,101,104,105};
@@ -621,14 +621,14 @@ void forward_network(network net, network_state state)
 
 
         // prints tensor number to output.csv
-	       /*
+
         for(int j = 0; j < l.outputs; j++){
           fprintf(fp,"%d,%lf\n", i, l.output[j]);
         }
-        */
+
 
         // prints output size, execution time, compression ratio, and compression time for each layer in layer_nums array
-
+        /*
         for(int j = 0; j < sizeof(layer_nums)/sizeof(layer_nums[0]); j++){
           if(i == layer_nums[j]){ // if the layer we are on is in our layer_nums array
             fprintf(fp, "%f,", output_size);  // Output size in KBytes
@@ -641,6 +641,7 @@ void forward_network(network net, network_state state)
             fprintf(fp, "%lf\n", compression_time); // Write compression time to csv
           }
         }
+        */
 
 
 
