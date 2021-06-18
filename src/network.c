@@ -511,7 +511,7 @@ void forward_network(network net, network_state state)
         // define array for fixed point
         // CHECK THIS BLOCK OF CODE- change to signed int
         // change sizeof(...) to whichever variable type matches the following line
-        const size_t max_int_array_size = 608 * 608 * 32 * sizeof(int8_t);  // create maximum size array for fixed point numbers
+        const size_t max_int_array_size = 608 * 608 * 32 * sizeof(fixed_point_t);  // create maximum size array for fixed point numbers
         fixed_point_t* array0 = malloc(max_int_array_size);
 
         size_t dest_size = max_dest_size;
