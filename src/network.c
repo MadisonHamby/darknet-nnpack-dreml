@@ -45,12 +45,14 @@
 #define CHUNK	(128*1024)
 //#define CHUNK 16384
 //#define dump
-//#define compress
-#define compress_fixed
+#define compress
+// If wanting to use fixed-point, uncomment #define compress_fixed and comment out #define compress
+// then change lines 54 and 55 to integer type and how many fractional bits 
+// Example: If you want 11.5 change line 54 to int16_t and line 55 to 5 fractional bits
+//#define compress_fixed
 //#define dump
-/// Fixed-point Format: 8.2 (8-bit)
-typedef int8_t fixed_point_t; // changed to signed
-#define FIXED_POINT_FRACTIONAL_BITS 1 // macro for the number of fractional bits
+typedef int16_t fixed_point_t; // changed to signed
+#define FIXED_POINT_FRACTIONAL_BITS 5 // macro for the number of fractional bits
 
 // converstion functions
 // convert fixed point to double
@@ -478,14 +480,14 @@ void forward_network(network net, network_state state)
     // Open file to write to
     FILE *fp;
     fp = fopen("output.csv", "w+");
-    fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
+    fprintf(fp, "Output size (Bytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
     //fprintf(fp, "Layer #, Tensor Value\n");
     // Array containing layers we want to save
     // Choose layers towards beginning and end, only convolutional layers
     int layer_nums[18] = {0,1,9,22,25,26,50,51,62,75,76,84,91,92,100,101,104,105};
 
     float compression_ratio, compression_time, output_size, layer_exec_time; // output_size is in KBytes
-    size_t* output_decompress_size;  // size of output of Decompress function
+    size_t output_decompress_size;  // size of output of Decompress function
 
     const size_t max_dest_size = 608 * 608 * 32 * sizeof(float);
     char* dest = malloc(max_dest_size);
@@ -540,7 +542,15 @@ void forward_network(network net, network_state state)
         }
 
 
-        printf("dest_size before zlibDecompress: %d\n", dest_size);
+        //printf("dest_size before zlibDecompress: %d\n", dest_size);
+
+        compression_ratio = ((float)dest_size)/(l.outputs*sizeof(fixed_point_t));
+        //if(compression_ratio > 1){  // throw error if compression ratio over 1
+          //printf("compression ratio greater than 1!\n");
+          //exit(1);
+        //}
+        //printf("%d - Compression ratio: %f\n", i, compression_ratio); // Print to terminal
+
         // input to decompress is dest, output is array0 when using fixed point
         int function_out = zlibDecompress(dest, array0, dest_size, &output_decompress_size);
         printf("dest_size after zlibDecompress: %d\n", output_decompress_size);
@@ -561,15 +571,9 @@ void forward_network(network net, network_state state)
             exit(1);
         }
 
-        compression_ratio = ((float)dest_size)/(l.outputs*sizeof(fixed_point_t));
-        if(compression_ratio > 1){  // throw error if compression ratio over 1
-          printf("compression ratio greater than 1!\n");
-          exit(1);
-        }
-        printf("%d - Compression ratio: %f\n", i, compression_ratio); // Print to terminal
 
         compression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression ending time with float to fixed added in
-        output_size = (float)dest_size / 1000;
+        //output_size = (float)output_decompress_size / 1000;
 
 
         #endif
@@ -579,7 +583,7 @@ void forward_network(network net, network_state state)
 
         double start_compress_time = get_time_point(); // Compression starting time
 
-
+        //printf("size before compressiong: %d\n", l.outputs*sizeof(float));
         // input to compression is (char*)l.output, output is dest
         if(zlibCompress((char*)l.output, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK)
         {
@@ -587,7 +591,15 @@ void forward_network(network net, network_state state)
             exit(1);
         }
 
-        printf("dest_size before zlibDecompress: %d\n", dest_size);
+        //printf("dest_size before zlibDecompress: %d\n", dest_size);
+
+        compression_ratio = ((float)dest_size)/(l.outputs*sizeof(float)); // uncompressed / compressed size FIX THIS LINE
+        //if(compression_ratio > 1){  // throw error if compression ratio over 1
+          //printf("compression ratio greater than 1!\n");
+          //exit(1);
+        //}
+        //printf("%d - Compression ratio: %f\n", i, compression_ratio); // Print to terminal
+
         // input to decompress is dest, output is (char*)l.output
         int function_out = zlibDecompress(dest, (char*)l.output, dest_size, &output_decompress_size);
         printf("dest_size after zlibDecompress: %d\n", output_decompress_size);
@@ -599,39 +611,32 @@ void forward_network(network net, network_state state)
             exit(1);
         }
 
-        compression_ratio = ((float)dest_size)/(l.outputs*sizeof(float));
-        if(compression_ratio > 1){  // throw error if compression ratio over 1
-          printf("compression ratio greater than 1!\n");
-          exit(1);
-        }
-        printf("%d - Compression ratio: %f\n", i, compression_ratio); // Print to terminal
-
 
 
         compression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression and decompression ending time
-        output_size = (float)dest_size / 1000;  // layer output size
+        //output_size = output_decompress_size;  // layer output size in bytes
 
         #endif
 
         state.input = l.output;
         layer_exec_time = ((double)get_time_point() - start_layer_exec_time) / 1000; // Layer execution ending time
 
-        printf("%d - Layer execution time of %lf milli-seconds.\n", i, layer_exec_time);  // Print to terminal
-        printf("%d - Compression time of %lf milli-seconds.\n", i, compression_time); // Print to terminal
+        //printf("%d - Layer execution time of %lf milli-seconds.\n", i, layer_exec_time);  // Print to terminal
+        //printf("%d - Compression time of %lf milli-seconds.\n", i, compression_time); // Print to terminal
 
 
         // prints tensor number to output.csv
-	/*
-       //for(int j = 0; j < l.outputs; j++){
-         // fprintf(fp,"%d,%lf\n", i, l.output[j]);
-        //}
+        /*
+       for(int j = 0; j < l.outputs; j++){
+         fprintf(fp,"%lf\n", l.output[j]);
+        }
         */
 
         // prints output size, execution time, compression ratio, and compression time for each layer in layer_nums array
 
         for(int j = 0; j < sizeof(layer_nums)/sizeof(layer_nums[0]); j++){
           if(i == layer_nums[j]){ // if the layer we are on is in our layer_nums array
-            fprintf(fp, "%f,", output_size);  // Output size in KBytes
+            fprintf(fp, "%d,", output_decompress_size);  // Output size in Bytes
             fprintf(fp, "%f,", layer_exec_time); // Output layer execution time
             fprintf(fp, "%f,", compression_ratio); // Write compression ratio to csv
             #ifdef compress_fixed
@@ -641,6 +646,7 @@ void forward_network(network net, network_state state)
             fprintf(fp, "%lf\n", compression_time); // Write compression time to csv
           }
         }
+
 
 
 
