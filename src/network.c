@@ -47,12 +47,12 @@
 //#define dump
 #define compress
 // If wanting to use fixed-point, uncomment #define compress_fixed and comment out #define compress
-// then change lines 54 and 55 to integer type and how many fractional bits 
+// then change lines 54 and 55 to integer type and how many fractional bits
 // Example: If you want 11.5 change line 54 to int16_t and line 55 to 5 fractional bits
 //#define compress_fixed
 //#define dump
-typedef int16_t fixed_point_t; // changed to signed
-#define FIXED_POINT_FRACTIONAL_BITS 5 // macro for the number of fractional bits
+typedef int8_t fixed_point_t; // changed to signed
+#define FIXED_POINT_FRACTIONAL_BITS 1 // macro for the number of fractional bits
 
 // converstion functions
 // convert fixed point to double
@@ -155,7 +155,7 @@ int zlibCompress(char* source, char* dest, int level, size_t source_size, size_t
     return Z_OK;
 }
 
-int zlibDecompress(char* source, char* dest, size_t source_size, int *decompress_size)
+int zlibDecompress(char* source, char* dest, size_t source_size, size_t *decompress_size)
 {
   int	dest_index = 0;
   int source_index = 0;
@@ -480,7 +480,6 @@ void forward_network(network net, network_state state)
     // Open file to write to
     FILE *fp;
     fp = fopen("output.csv", "w+");
-    fprintf(fp, "Output size (Bytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
     //fprintf(fp, "Layer #, Tensor Value\n");
     // Array containing layers we want to save
     // Choose layers towards beginning and end, only convolutional layers
@@ -509,10 +508,11 @@ void forward_network(network net, network_state state)
         #endif
 
         #ifdef compress_fixed
+        if(i == 0){
+          fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
+        }
 
         // define array for fixed point
-        // CHECK THIS BLOCK OF CODE- change to signed int
-        // change sizeof(...) to whichever variable type matches the following line
         const size_t max_int_array_size = 608 * 608 * 32 * sizeof(fixed_point_t);  // create maximum size array for fixed point numbers
         fixed_point_t* array0 = malloc(max_int_array_size);
 
@@ -534,15 +534,11 @@ void forward_network(network net, network_state state)
 
         // input to compression is array0, output is dest when using fixed point
         // original input to compression is (char*)l.output, output is dest
-        // l.outputs*sizeof(...)
         if(zlibCompress(array0, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(fixed_point_t), &dest_size) != Z_OK)
         {
             printf("compression failed!\n");
             exit(1);
         }
-
-
-        //printf("dest_size before zlibDecompress: %d\n", dest_size);
 
         compression_ratio = ((float)dest_size)/(l.outputs*sizeof(fixed_point_t));
         //if(compression_ratio > 1){  // throw error if compression ratio over 1
@@ -552,7 +548,8 @@ void forward_network(network net, network_state state)
         //printf("%d - Compression ratio: %f\n", i, compression_ratio); // Print to terminal
 
         // input to decompress is dest, output is array0 when using fixed point
-        int function_out = zlibDecompress(dest, array0, dest_size, &output_decompress_size);
+        //printf("dest_size before zlibDecompress: %d\n", dest_size);
+        int function_out = zlibDecompress(dest, array0, l.outputs*sizeof(fixed_point_t), &output_decompress_size);
         printf("dest_size after zlibDecompress: %d\n", output_decompress_size);
 
         // convert back to float
@@ -579,6 +576,9 @@ void forward_network(network net, network_state state)
         #endif
 
         #ifdef compress
+        if(i == 0){
+          fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time\n");  // print headers to output file
+        }
         size_t dest_size = max_dest_size;
 
         double start_compress_time = get_time_point(); // Compression starting time
@@ -633,10 +633,14 @@ void forward_network(network net, network_state state)
         */
 
         // prints output size, execution time, compression ratio, and compression time for each layer in layer_nums array
-
         for(int j = 0; j < sizeof(layer_nums)/sizeof(layer_nums[0]); j++){
           if(i == layer_nums[j]){ // if the layer we are on is in our layer_nums array
-            fprintf(fp, "%d,", output_decompress_size);  // Output size in Bytes
+            #ifdef compress_fixed
+            fprintf(fp, "%d,", (int)(output_decompress_size*(sizeof(float) / sizeof(fixed_point_t)) / 1000));  // Output size in KBytes
+            #endif
+            #ifdef compress
+            fprintf(fp, "%d,", (int)(output_decompress_size) / 1000);  // Output size in KBytes
+            #endif
             fprintf(fp, "%f,", layer_exec_time); // Output layer execution time
             fprintf(fp, "%f,", compression_ratio); // Write compression ratio to csv
             #ifdef compress_fixed
