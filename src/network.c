@@ -521,6 +521,7 @@ void forward_network(network net, network_state state)
         size_t dest_size = max_dest_size;
 
         double float_to_fixed_time, fixed_to_float_time;
+        printf("Original Output Size: %d\n", l.outputs*sizeof(float) / 1024);
         double start_compress_time = get_time_point(); // Compression starting time
 
         // convert to fixed point
@@ -533,7 +534,8 @@ void forward_network(network net, network_state state)
         float_to_fixed_time = ((double)get_time_point() - start_float_to_fixed_time) / 1000;
 
         // POST CONVERSION SIZE GOES HERE
-        post_conversion_size = ((int)sizeof(array0[0]) * l.outputs) / ((int)sizeof(float));
+        post_conversion_size = ((int)sizeof(fixed_point_t) * l.outputs);
+        //printf("Post Conversion size: %d\n", post_conversion_size / 1024);
 
         // input to compression is array0, output is dest when using fixed point
         // original input to compression is (char*)l.output, output is dest
@@ -545,6 +547,8 @@ void forward_network(network net, network_state state)
 
         // COMPRESSED SIZE GOES HERE
         compressed_size = dest_size;
+        //printf("Compressed size: %d\n", compressed_size / 1024);
+        //printf("Compression ratio: %f\n", (float)compressed_size / (float)post_conversion_size);
         //compression_ratio = ((float)dest_size)/(l.outputs*sizeof(fixed_point_t));
         //if(compression_ratio > 1){  // throw error if compression ratio over 1
           //printf("compression ratio greater than 1!\n");
