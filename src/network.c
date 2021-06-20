@@ -45,14 +45,14 @@
 #define CHUNK	(128*1024)
 //#define CHUNK 16384
 //#define dump
-#define compress
+//#define compress
 // If wanting to use fixed-point, uncomment #define compress_fixed and comment out #define compress
 // then change lines 54 and 55 to integer type and how many fractional bits
 // Example: If you want 11.5 change line 54 to int16_t and line 55 to 5 fractional bits
-//#define compress_fixed
+#define compress_fixed
 //#define dump
-typedef int8_t fixed_point_t; // changed to signed
-#define FIXED_POINT_FRACTIONAL_BITS 1 // macro for the number of fractional bits
+typedef int16_t fixed_point_t; // changed to signed
+#define FIXED_POINT_FRACTIONAL_BITS 5 // macro for the number of fractional bits
 
 // converstion functions
 // convert fixed point to double
@@ -490,6 +490,7 @@ void forward_network(network net, network_state state)
 
     const size_t max_dest_size = 608 * 608 * 32 * sizeof(float);
     char* dest = malloc(max_dest_size);
+    int post_conversion_size, compressed_size;
 
     state.workspace = net.workspace;
     int i;
@@ -532,6 +533,7 @@ void forward_network(network net, network_state state)
         float_to_fixed_time = ((double)get_time_point() - start_float_to_fixed_time) / 1000;
 
         // POST CONVERSION SIZE GOES HERE
+        post_conversion_size = ((int)sizeof(array0[0]) * l.outputs) / ((int)sizeof(float));
 
         // input to compression is array0, output is dest when using fixed point
         // original input to compression is (char*)l.output, output is dest
@@ -542,7 +544,8 @@ void forward_network(network net, network_state state)
         }
 
         // COMPRESSED SIZE GOES HERE
-        compression_ratio = ((float)dest_size)/(l.outputs*sizeof(fixed_point_t));
+        compressed_size = dest_size;
+        //compression_ratio = ((float)dest_size)/(l.outputs*sizeof(fixed_point_t));
         //if(compression_ratio > 1){  // throw error if compression ratio over 1
           //printf("compression ratio greater than 1!\n");
           //exit(1);
@@ -551,8 +554,9 @@ void forward_network(network net, network_state state)
 
         // input to decompress is dest, output is array0 when using fixed point
         //printf("dest_size before zlibDecompress: %d\n", dest_size);
-        int function_out = zlibDecompress(dest, array0, l.outputs*sizeof(fixed_point_t), &output_decompress_size);
-        printf("dest_size after zlibDecompress: %d\n", output_decompress_size);
+        // l.outputs*sizeof(fixed_point_t) vs dest_size
+        int function_out = zlibDecompress(dest, array0, dest_size, &output_decompress_size);
+        //printf("dest_size after zlibDecompress: %d\n", output_decompress_size);
 
         // convert back to float
         // input: array0
@@ -579,11 +583,15 @@ void forward_network(network net, network_state state)
 
         #ifdef compress
         if(i == 0){
-          fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time\n");  // print headers to output file
+          fprintf(fp, "Default Output Size, Post-Conversion Size, Compressed Size\n");
+          //fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time\n");  // print headers to output file
         }
         size_t dest_size = max_dest_size;
 
         double start_compress_time = get_time_point(); // Compression starting time
+
+        // POST CONVERSION SIZE GOES HERE
+        post_conversion_size = l.outputs * sizeof(float));
 
         //printf("size before compressiong: %d\n", l.outputs*sizeof(float));
         // input to compression is (char*)l.output, output is dest
@@ -593,6 +601,8 @@ void forward_network(network net, network_state state)
             exit(1);
         }
 
+        // COMPRESSED SIZE GOES HERE
+        compressed_size = dest_size;
         //printf("dest_size before zlibDecompress: %d\n", dest_size);
 
         compression_ratio = ((float)dest_size)/(l.outputs*sizeof(float)); // uncompressed / compressed size FIX THIS LINE
@@ -604,7 +614,7 @@ void forward_network(network net, network_state state)
 
         // input to decompress is dest, output is (char*)l.output
         int function_out = zlibDecompress(dest, (char*)l.output, dest_size, &output_decompress_size);
-        printf("dest_size after zlibDecompress: %d\n", output_decompress_size);
+        //printf("dest_size after zlibDecompress: %d\n", output_decompress_size);
 
         if(function_out != Z_OK)
         {
@@ -637,9 +647,11 @@ void forward_network(network net, network_state state)
         // prints output size, execution time, compression ratio, and compression time for each layer in layer_nums array
         for(int j = 0; j < sizeof(layer_nums)/sizeof(layer_nums[0]); j++){
           if(i == layer_nums[j]){ // if the layer we are on is in our layer_nums array
-            #ifdef compress_fixed
-            fprintf(fp, "%d,", (int)(output_decompress_size*(sizeof(float) / sizeof(fixed_point_t)) / 1024));  // Output size in KBytes AND DEFAULT COMPRESSION
-            #endif
+            //#ifdef compress_fixed
+            fprintf(fp, "%d,", (int)(output_decompress_size / 1024)); // Default output size
+            fprintf(fp, "%d,", (int)(post_conversion_size / 1024));  // Post conversion size in KBytes
+            fprintf(fp,"%d\n", (int)(compressed_size / 1024)); // Compressed size in KBytes
+            //#endif
             //#ifdef compress
             //fprintf(fp, "%d,", (int)(output_decompress_size) / 1024);  // Output size in KBytes
             //#endif
