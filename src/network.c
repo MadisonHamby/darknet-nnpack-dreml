@@ -509,7 +509,8 @@ void forward_network(network net, network_state state)
 
         #ifdef compress_fixed
         if(i == 0){
-          fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
+          fprintf(fp, "Default Output Size, Post-Conversion Size, Compressed Size\n");
+          //fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
         }
 
         // define array for fixed point
@@ -530,7 +531,7 @@ void forward_network(network net, network_state state)
         }
         float_to_fixed_time = ((double)get_time_point() - start_float_to_fixed_time) / 1000;
 
-
+        // POST CONVERSION SIZE GOES HERE
 
         // input to compression is array0, output is dest when using fixed point
         // original input to compression is (char*)l.output, output is dest
@@ -540,6 +541,7 @@ void forward_network(network net, network_state state)
             exit(1);
         }
 
+        // COMPRESSED SIZE GOES HERE
         compression_ratio = ((float)dest_size)/(l.outputs*sizeof(fixed_point_t));
         //if(compression_ratio > 1){  // throw error if compression ratio over 1
           //printf("compression ratio greater than 1!\n");
@@ -636,18 +638,18 @@ void forward_network(network net, network_state state)
         for(int j = 0; j < sizeof(layer_nums)/sizeof(layer_nums[0]); j++){
           if(i == layer_nums[j]){ // if the layer we are on is in our layer_nums array
             #ifdef compress_fixed
-            fprintf(fp, "%d,", (int)(output_decompress_size*(sizeof(float) / sizeof(fixed_point_t)) / 1000));  // Output size in KBytes
+            fprintf(fp, "%d,", (int)(output_decompress_size*(sizeof(float) / sizeof(fixed_point_t)) / 1024));  // Output size in KBytes AND DEFAULT COMPRESSION
             #endif
-            #ifdef compress
-            fprintf(fp, "%d,", (int)(output_decompress_size) / 1000);  // Output size in KBytes
-            #endif
-            fprintf(fp, "%f,", layer_exec_time); // Output layer execution time
-            fprintf(fp, "%f,", compression_ratio); // Write compression ratio to csv
-            #ifdef compress_fixed
-            fprintf(fp, "%f,", float_to_fixed_time);  // Write float to fixed time
-            fprintf(fp, "%f,", fixed_to_float_time);  // Write fixed to float time
-            #endif
-            fprintf(fp, "%lf\n", compression_time); // Write compression time to csv
+            //#ifdef compress
+            //fprintf(fp, "%d,", (int)(output_decompress_size) / 1024);  // Output size in KBytes
+            //#endif
+            //fprintf(fp, "%f,", layer_exec_time); // Output layer execution time
+            //fprintf(fp, "%f,", compression_ratio); // Write compression ratio to csv
+            //#ifdef compress_fixed
+            //fprintf(fp, "%f,", float_to_fixed_time);  // Write float to fixed time
+            //fprintf(fp, "%f,", fixed_to_float_time);  // Write fixed to float time
+            //#endif
+            //fprintf(fp, "%lf\n", compression_time); // Write compression time to csv
           }
         }
 
