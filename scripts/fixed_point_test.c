@@ -52,8 +52,8 @@ int main(){
 
   // stop float to fixed clock
   float_to_fixed_end = clock();
-  printf("end time - start time for float to fixed: %ld\n", (float_to_fixed_end - float_to_fixed_start));
-  printf("float to fixed time: %lf\n", ((double)((float_to_fixed_end - float_to_fixed_start) / CLOCKS_PER_SEC) / 1000));
+  //printf("end time - start time for float to fixed: %ld [ms]\n", (float_to_fixed_end - float_to_fixed_start));
+  printf("float to fixed time: %lf [ms]\n", ((double)((float_to_fixed_end - float_to_fixed_start) / CLOCKS_PER_SEC) * 1000));
 
   // start fixed to float clock
   fixed_to_float_start = clock();
@@ -62,9 +62,9 @@ int main(){
   }
   // stop fixed to float clock
   fixed_to_float_end = clock();
-  printf("end time - start time for fixed to float: %ld\n", (fixed_to_float_end - fixed_to_float_start));
-  printf("fixed to float time: %lf\n", ((double)((fixed_to_float_end - fixed_to_float_start) / CLOCKS_PER_SEC) / 1000));
-  printf("fixed to float - float to fixed: %ld\n", ((fixed_to_float_end - fixed_to_float_start) - (float_to_fixed_end - float_to_fixed_start)));
+  //printf("end time - start time for fixed to float: %ld\n", (fixed_to_float_end - fixed_to_float_start));
+  printf("fixed to float time: %lf [ms]\n", ((double)((fixed_to_float_end - fixed_to_float_start) / CLOCKS_PER_SEC) * 1000));
+  //printf("fixed to float - float to fixed: %ld\n", ((fixed_to_float_end - fixed_to_float_start) - (float_to_fixed_end - float_to_fixed_start)));
 
   fclose(fp);
 }
