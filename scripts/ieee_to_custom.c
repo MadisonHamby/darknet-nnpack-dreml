@@ -95,9 +95,6 @@ int main()
     // cut down to:
     // 0 | 1000 | 100
     int signed_bit = var.raw.sign; // get signed bit
-    // signed bit will be 1000 0000
-    // or 0000 0000
-    //signed_bit = signed_bit << 8;
     printf("Signed bit: ");
     printBinary(signed_bit, 1);
     printf("\n");
@@ -139,6 +136,61 @@ int main()
     printf("Back to IEEE: %lf\n", ieee.f);
 
     printIEEE(ieee);
+
+    // Now we will change to 16 bit representation
+    printf("\n\n");
+    printf("16 bit representation\n");
+    // 16 bit format
+    // 1 signed bit
+    // 4 exponent bits
+    // 11 mantissa bits
+
+    // signed bit
+    signed_bit = var.raw.sign; // get signed bit
+    printf("Signed bit: ");
+    printBinary(signed_bit, 1);
+    printf("\n");
+
+    // exponent bits
+    printf("The original exponent with bias is: %d\n", var.raw.exponent);
+    exp_bits = abs(var.raw.exponent - 127);
+    printf("Exponent without bias is: %d\n", exp_bits);
+    printf("Exponent bits without bias: ");
+    printBinary(exp_bits, 4);
+    printf("\n");
+
+    // mantissa bits
+    mantissa_bits = var.raw.mantissa >> (23 - 11);
+    // get mantissa bits (shift over 23 - # of mantissa bits)
+    printf("Mantissa bits: ");
+    printBinary(mantissa_bits, 11);
+    printf("\n");
+
+    int16_t final_16_bit = 0; // where we will store final 16 bit
+    final_16_bit = final_16_bit | signed_bit << (sizeof(int16_t) - 1); // OR with 0
+    //printBinary(final_8_bit, 8);
+    //printf("\n");
+    final_16_bit = final_16_bit | exp_bits << 11; // shift over number of mantissa bits
+    //printBinary(final_8_bit, 8);
+    //printf("\n");
+    final_16_bit = final_16_bit | mantissa_bits;
+    printf("16 bit reresentation: ");
+    printBinary(final_16_bit, 16);
+    printf("\n");
+
+    // convert back to IEEE
+    ieee.f = 0;
+    ieee.raw.sign = signed_bit;
+    // add back in the bias
+    exp_bits = exp_bits + 127;
+    ieee.raw.exponent = exp_bits;
+    ieee.raw.mantissa = mantissa_bits << (23 - 11);
+    printf("Back to IEEE: %lf\n", ieee.f);
+
+    printIEEE(ieee);
+
+
+
 
 
     return 0;
