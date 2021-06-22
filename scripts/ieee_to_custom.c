@@ -128,11 +128,11 @@ int main()
     // convert back to IEEE
     myfloat ieee;
     ieee.f = 0;
-    ieee.raw.sign = signed_bit;
+    ieee.raw.sign = final_8_bit >> 7;
     // add back in the bias
     exp_bits = exp_bits + 127;
     ieee.raw.exponent = exp_bits;
-    ieee.raw.mantissa = mantissa_bits << (23 - 3);
+    ieee.raw.mantissa = (final_8_bit & 0xF) << (23 - 3);
     printf("Back to IEEE: %lf\n", ieee.f);
 
     printIEEE(ieee);
@@ -140,6 +140,7 @@ int main()
     // Now we will change to 16 bit representation
     printf("\n\n");
     printf("16 bit representation\n");
+    int exp_array[5];
     // 16 bit format
     // 1 signed bit
     // 4 exponent bits
@@ -153,10 +154,10 @@ int main()
 
     // exponent bits
     printf("The original exponent with bias is: %d\n", var.raw.exponent);
-    exp_bits = abs(var.raw.exponent - 127);
-    printf("Exponent without bias is: %d\n", exp_bits);
+    exp_array[0] = abs(var.raw.exponent - 127);
+    printf("Exponent without bias is: %d\n", exp_array[0]);
     printf("Exponent bits without bias: ");
-    printBinary(exp_bits, 4);
+    printBinary(exp_array[0], 4);
     printf("\n");
 
     // mantissa bits
@@ -167,24 +168,29 @@ int main()
     printf("\n");
 
     int16_t final_16_bit = 0; // where we will store final 16 bit
-    final_16_bit = final_16_bit | signed_bit << (sizeof(int16_t) - 1); // OR with 0
+    final_16_bit = final_16_bit | signed_bit << 15; // OR with 0
     //printBinary(final_8_bit, 8);
     //printf("\n");
-    final_16_bit = final_16_bit | exp_bits << 11; // shift over number of mantissa bits
+    final_16_bit = final_16_bit | exp_array[0] << 11; // shift over number of mantissa bits
     //printBinary(final_8_bit, 8);
     //printf("\n");
     final_16_bit = final_16_bit | mantissa_bits;
-    printf("16 bit reresentation: ");
+    printf("16 bit representation: ");
     printBinary(final_16_bit, 16);
     printf("\n");
+    //0 1111 00000000000
+
+
 
     // convert back to IEEE
     ieee.f = 0;
-    ieee.raw.sign = signed_bit;
+    //ieee.raw.sign = signed_bit;
+    ieee.raw.sign = final_16_bit >> 15; // get signed bit 1 0000 00000000000
     // add back in the bias
-    exp_bits = exp_bits + 127;
-    ieee.raw.exponent = exp_bits;
-    ieee.raw.mantissa = mantissa_bits << (23 - 11);
+    ieee.raw.exponent = exp_array[0] + 127;
+    //ieee.raw.exponent = exp_bits;
+    //ieee.raw.exponent = exp_bits;
+    ieee.raw.mantissa = (final_16_bit & 0x7FF) << (23 - 11); // get mantissa bits 0 0000 11111111111
     printf("Back to IEEE: %lf\n", ieee.f);
 
     printIEEE(ieee);
