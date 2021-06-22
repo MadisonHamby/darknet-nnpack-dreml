@@ -179,8 +179,8 @@ int main()
     printBinary(final_16_bit, 16);
     printf("\n");
     //0 1111 00000000000
-
-
+    printf("0000101010100111\n");
+    //final_16_bit = 2727;
 
     // convert back to IEEE
     ieee.f = 0;
