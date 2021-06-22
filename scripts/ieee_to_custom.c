@@ -106,7 +106,6 @@ int main()
     printf("The original exponent with bias is: %d\n", var.raw.exponent);
     exp_bits = abs(var.raw.exponent - 127);
     printf("Exponent without bias is: %d\n", exp_bits);
-    // our bias for 8 bit is 8
     printf("Exponent bits without bias: ");
     printBinary(exp_bits, 4);
     printf("\n");
