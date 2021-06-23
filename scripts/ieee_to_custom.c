@@ -156,8 +156,12 @@ int main()
 
     // exponent bits
     printf("The original exponent with bias is: %d\n", var.raw.exponent);
+<<<<<<< HEAD
     // if number is negative
     exp_array[0] = var.raw.exponent - 127;
+=======
+    exp_array[0] = abs(var.raw.exponent - 127);
+>>>>>>> 406dab95458d7005183847d5eb51c9fb2cb34015
 
     printf("Exponent without bias is: %d\n", exp_array[0]);
     printf("Exponent bits without bias: ");
@@ -185,9 +189,13 @@ int main()
     //ieee.raw.sign = signed_bit;
     ieee.raw.sign = final_16_bit >> 15; // get signed bit 1 0000 00000000000
     // add back in the bias
+<<<<<<< HEAD
     // if number is negative
     ieee.raw.exponent = 127 + exp_array[0];
     // if number is positive 127 + number
+=======
+    ieee.raw.exponent = 127 - exp_array[0];
+>>>>>>> 406dab95458d7005183847d5eb51c9fb2cb34015
     ieee.raw.mantissa = (final_16_bit & 0x7FF) << (23 - 11); // get mantissa bits 0 0000 11111111111
     printf("Back to IEEE: %lf\n", ieee.f);
 
