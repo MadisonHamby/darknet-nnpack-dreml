@@ -57,7 +57,7 @@ typedef int16_t fixed_point_t; // changed to signed
 #define BIT_16_MANTISSA 11 // macro for mantissa bits for 16 bits
 #define BIT_8_MANTISSA 3 // macro for mantissa bits for 8 bits
 typedef int16_t ieee_to_custom; // change int16_t  to int8_t for 8 bits
-#define BITMASK 0xf0
+#define BITMASK 0xFFFFFFF0
 
 typedef union {
 
@@ -577,13 +577,16 @@ void forward_network(network net, network_state state)
         // Instantiate the union
         const size_t max_int_array_size = 608 * 608 * 32 * sizeof(int);
         int16_t* array0 = malloc(max_int_array_size);
+        float* ieee_array = malloc(max_array_size);
+        float* orig_array = malloc(max_array_size);
         int signed_bit, mantissa_bits;
         int* exp_bits = malloc(max_int_array_size);
         ieee_to_custom final_bits = 0; // where we store final custom bit transformation
         myfloat var;
-        fprintf(fp, "%f,", l.output[0]); // before conversion
+
 
         for(int j = 0; j < l.outputs; j++){ // convert ieee 754 to 16 bit
+          orig_array[j] = l.output[j];
           var.f = l.output[j];
           signed_bit = var.raw.sign; // get signed bit
           exp_bits[j] = (int)var.raw.exponent - 127;
@@ -653,9 +656,14 @@ void forward_network(network net, network_state state)
           ieee.raw.exponent = 127 + exp_bits[j];
           ieee.raw.mantissa = (array0[j] & 0x7FF) << (23 - 11); // get mantissa bits 0 0000 11111111111
           l.output[j] = ieee.f;
+          ieee_array[j] = ieee.f;
+        }
+        if(i == 0){
+          for(int k = 0; k < 519168; k++){
+            fprintf(fp, "%f,%f\n", orig_array[k], ieee_array[k]); // after conversion
+          }
         }
 
-        fprintf(fp, "%f\n", l.output[0]); // after conversion
 
         /*
         printf("l.output ieee bit: ");

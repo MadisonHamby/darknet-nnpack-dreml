@@ -27,7 +27,7 @@
 // to IEEE 754 floating point representaion
 
 #include <stdio.h>
-#define BITMASK 0xf0
+#define BITMASK 0xFFFFFFF0
 void printBinary(int n, int i)
 {
 
