@@ -161,7 +161,7 @@ int main()
 
     printf("Exponent without bias is: %d\n", exp_array[0]);
     printf("Exponent bits without bias: ");
-    printBinary(exp_array[0], 4);
+    printBinary(exp_array[0], 8);
     printf("\n");
 
     // mantissa bits
@@ -187,7 +187,12 @@ int main()
     ieee.raw.sign = final_16_bit >> 15; // get signed bit 1 0000 00000000000
     // add back in the bias
     // if number is negative
-    if(exp_array[0] << 15 != 0){
+    printBinary(exp_array[0], 16);
+    printf("\n");
+    printBinary(exp_array[0] >> 3, 16);
+    printf("\n");
+    //printf("%d\n", exp_array[0] << 12);
+    if(exp_array[0] >> 3 != 0){
       exp_array[0] = exp_array[0] | BITMASK;
       printBinary(exp_array[0], 8);
       printf("\n");
