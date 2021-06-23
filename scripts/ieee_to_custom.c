@@ -27,7 +27,7 @@
 // to IEEE 754 floating point representaion
 
 #include <stdio.h>
-
+#define BITMASK 0xf0
 void printBinary(int n, int i)
 {
 
@@ -157,7 +157,7 @@ int main()
     // exponent bits
     printf("The original exponent with bias is: %d\n", var.raw.exponent);
     // if number is negative
-    exp_array[0] = var.raw.exponent - 127;
+    exp_array[0] = (int)var.raw.exponent - 127;
 
     printf("Exponent without bias is: %d\n", exp_array[0]);
     printf("Exponent bits without bias: ");
@@ -173,6 +173,7 @@ int main()
 
     int16_t final_16_bit = 0; // where we will store final 16 bit
     final_16_bit = final_16_bit | signed_bit << 15; // OR with 0
+    exp_array[0] = exp_array[0] & 0xF;
     final_16_bit = final_16_bit | exp_array[0] << 11; // shift over number of mantissa bits
     final_16_bit = final_16_bit | mantissa_bits;
     printf("16 bit representation: ");
@@ -186,8 +187,12 @@ int main()
     ieee.raw.sign = final_16_bit >> 15; // get signed bit 1 0000 00000000000
     // add back in the bias
     // if number is negative
+    if(exp_array[0] << 15 != 0){
+      exp_array[0] = exp_array[0] | BITMASK;
+      printBinary(exp_array[0], 8);
+      printf("\n");
+    }
     ieee.raw.exponent = 127 + exp_array[0];
-
     // if number is positive 127 + number
     ieee.raw.mantissa = (final_16_bit & 0x7FF) << (23 - 11); // get mantissa bits 0 0000 11111111111
     printf("Back to IEEE: %lf\n", ieee.f);
