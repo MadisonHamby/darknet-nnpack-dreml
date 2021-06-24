@@ -76,137 +76,164 @@ void printIEEE(myfloat var)
     printf("\n");
 }
 
+int16_t ieee_to_16(float ieee_input){
+  printf("ieee_to_16 function:\n");
+  // Instantiate the union
+  myfloat var;
+  int16_t final_16_bit = 0; // where we will store 16 bit value
+  int mantissa_bits = 0, signed_bit = 0, exp_bits = 0;
+  var.f = ieee_input;
+
+  signed_bit = var.raw.sign; // get signed bit
+
+  exp_bits = (int)var.raw.exponent - 127; // get exponent bits and subtract the bias
+  exp_bits = exp_bits & 0xF; // AND with 0xF to clear any excess bits
+  printf("The original exponent with bias is: %d\n", var.raw.exponent);
+  printf("Exponent without bias is: %d\n", exp_bits);
+  printf("Exponent bits without bias: ");
+  printBinary(exp_bits, 4);
+  printf("\n");
+
+  mantissa_bits = var.raw.mantissa >> (23 - 11); // get mantissa bits
+
+  final_16_bit = final_16_bit | signed_bit << 15; // shift sign bit to left most bit and OR with final_16_bit
+  final_16_bit = final_16_bit | exp_bits << 11; // shift over 11 bits (number of mantissa bits)
+  final_16_bit = final_16_bit | mantissa_bits; // manitssa bits are already right-most, dont need to shift
+
+  return final_16_bit;
+}
+
+myfloat int16_to_ieee(int16_t convert_input){
+  printf("int16_to_ieee function:\n");
+  myfloat ieee;
+  int mantissa_bits = 0, signed_bit = 0, exp_bits = 0;
+  ieee.f = 0;
+
+  ieee.raw.sign = convert_input >> 15; // get signed bit, shift to rightmost place
+
+  exp_bits = (convert_input & 0x7800) >> 11; // get exp_bits by AND with 0111100000000000 and shift to rightmost place
+  printf("Exponent without bias is: %d\n", exp_bits);
+  printf("Exponent bits without bias: ");
+  printBinary(exp_bits, 4);
+  printf("\n");
+
+  if(exp_bits >> 3 != 0){ // if number is negative
+    exp_bits = exp_bits | BITMASK; // fill in left bits with 1 to keep number negative
+  }
+  ieee.raw.exponent = 127 + exp_bits; // add back in the bias
+  printf("Exponent with bias is: %d\n", ieee.raw.exponent);
+  printf("Exponent bits with bias: ");
+  printBinary(ieee.raw.exponent, 8);
+  printf("\n");
+
+  ieee.raw.mantissa = (convert_input & 0x7FF) << (23 - 11); // get mantissa bits 0 0000 11111111111 and shift over
+  printf("Mantissa with mask: ");
+  printBinary(ieee.raw.mantissa, 23);
+  printf("\n");
+
+  printIEEE(ieee);
+  printf("\n");
+
+  return ieee;
+
+}
+
+int8_t ieee_to_8(float ieee_input){
+  printf("ieee_to_8 function:\n");
+  // Instantiate the union
+  myfloat var;
+  int8_t final_8_bit = 0; // where we will store 16 bit value
+  int mantissa_bits = 0, signed_bit = 0, exp_bits = 0;
+  var.f = ieee_input;
+
+  signed_bit = var.raw.sign;
+
+  exp_bits = (int)var.raw.exponent - 127; // get exponent bits and subtract the bias
+  exp_bits = exp_bits & 0xF; // AND with 0xF to clear any excess bits
+  printf("The original exponent with bias is: %d\n", var.raw.exponent);
+  printf("Exponent without bias is: %d\n", exp_bits);
+  printf("Exponent bits without bias: ");
+  printBinary(exp_bits, 4);
+  printf("\n");
+
+  mantissa_bits = var.raw.mantissa >> (23 - 3); // get mantissa bits
+
+  final_8_bit = final_8_bit | signed_bit << 7; // shift sign bit to left most bit and OR with final_16_bit
+  final_8_bit = final_8_bit | exp_bits << 3; // shift over 11 bits (number of mantissa bits)
+  final_8_bit = final_8_bit | mantissa_bits; // manitssa bits are already right-most, dont need to shift
+
+  return final_8_bit;
+}
+
+myfloat int8_to_ieee(int8_t convert_input){
+  printf("int8_to_ieee function:\n");
+  myfloat ieee;
+  int mantissa_bits = 0, signed_bit = 0, exp_bits = 0;
+  ieee.f = 0;
+
+  ieee.raw.sign = convert_input >> 7; // get signed bit, shift to rightmost place
+
+  exp_bits = (convert_input & 0x78) >> 3; // get exp_bits by AND with 01111000and shift to rightmost place
+  printf("Exponent without bias is: %d\n", exp_bits);
+  printf("Exponent bits without bias: ");
+  printBinary(exp_bits, 4);
+  printf("\n");
+
+  if(exp_bits >> 3 != 0){ // if number is negative
+    exp_bits = exp_bits | BITMASK; // fill in left bits with 1 to keep number negative
+  }
+  ieee.raw.exponent = 127 + exp_bits; // add back in the bias
+  printf("Exponent with bias is: %d\n", ieee.raw.exponent);
+  printf("Exponent bits with bias: ");
+  printBinary(ieee.raw.exponent, 8);
+  printf("\n");
+
+  ieee.raw.mantissa = (convert_input & 0x7) << (23 - 3); // get mantissa bits 0 0000 11111111111 and shift over
+  printf("Mantissa with mask: ");
+  printBinary(ieee.raw.mantissa, 3);
+  printf("\n");
+
+  printIEEE(ieee);
+  printf("\n");
+
+  return ieee;
+}
 // Driver Code
 int main()
 {
+    float input_var = 0;
 
-    // Instantiate the union
-    myfloat var;
-
-    // Get the real value
+    // Get the input variable
     printf("Enter IEEE 754 number: ");
-    scanf("%f", &var.f); // number we want to change to 8 bit and back to IEEE 754
+    scanf("%f", &input_var); // number we want to change to new form and back to IEEE 754
 
     // Get the IEEE floating point representation
-    printf("IEEE 754 representation of %f is : \n",
-           var.f);
-    printIEEE(var);
-    /*
-    // cut down to:
-    // 0 | 1000 | 100
-    int signed_bit = var.raw.sign; // get signed bit
-    printf("Signed bit: ");
-    printBinary(signed_bit, 1);
+    // for debug purposes only
+    myfloat ieee_cast;
+    ieee_cast.f = input_var;
+    printf("IEEE 754 representation of %f is : \n", ieee_cast.f);
+    printIEEE(ieee_cast);
     printf("\n");
 
-    int exp_bits;
-    printf("The original exponent with bias is: %d\n", var.raw.exponent);
-    exp_bits = abs(var.raw.exponent - 127);
-    printf("Exponent without bias is: %d\n", exp_bits);
-    printf("Exponent bits without bias: ");
-    printBinary(exp_bits, 4);
-    printf("\n");
-
-    int mantissa_bits = var.raw.mantissa >> (23 - 3);
-    // get mantissa bits (shift over 23 - # of mantissa bits)
-    printf("Mantissa bits: ");
-    printBinary(mantissa_bits, 3);
-    printf("\n");
-
-    int final_8_bit = 0; // where we will store final 8 bit
-    final_8_bit = final_8_bit | signed_bit << 7; // OR with 0
-    //printBinary(final_8_bit, 8);
-    //printf("\n");
-    final_8_bit = final_8_bit | exp_bits << 3;
-    //printBinary(final_8_bit, 8);
-    //printf("\n");
-    final_8_bit = final_8_bit | mantissa_bits;
-    printf("8 bit reresentation: ");
-    printBinary(final_8_bit, 8);
-    printf("\n");
-
-    // convert back to IEEE
-    myfloat ieee;
-    ieee.f = 0;
-    ieee.raw.sign = final_8_bit >> 7;
-    // add back in the bias
-    // add back in the bias
-    ieee.raw.exponent = 127 - exp_bits;
-    ieee.raw.mantissa = (final_8_bit & 0xF) << (23 - 3);
-    printf("Back to IEEE: %lf\n", ieee.f);
-
-    printIEEE(ieee);
-    */
-    myfloat ieee;
-    int mantissa_bits, signed_bit, exp_bits;
-    // Now we will change to 16 bit representation
+    // convert to 8 bit
+    int8_t convert_from_8 = ieee_to_8(input_var);
+    printf("8 bit representation: ");
+    printBinary(convert_from_8, 8);
     printf("\n\n");
-    printf("16 bit representation\n");
-    int exp_array[5];
-    // 16 bit format
-    // 1 signed bit
-    // 4 exponent bits
-    // 11 mantissa bits
 
-    // signed bit
-    signed_bit = var.raw.sign; // get signed bit
-    printf("Signed bit: ");
-    printBinary(signed_bit, 1);
-    printf("\n");
+    // convert form 8 bit to IEEE 754
+    myfloat convert_back_8 = int8_to_ieee(convert_from_8);
+    printf("Back to IEEE value from 8 bit: %f\n\n", convert_back_8.f);
 
-    // exponent bits
-    printf("The original exponent with bias is: %d\n", var.raw.exponent);
-    // if number is negative
-    exp_array[0] = (int)var.raw.exponent - 127;
+    // convert to 16 bit
+    int16_t convert_from = ieee_to_16(input_var);
+    printf("16 bit IEEE format: ");
+    printBinary(convert_from, 16);
+    printf("\n\n");
 
-    printf("Exponent without bias is: %d\n", exp_array[0]);
-    printf("Exponent bits without bias: ");
-    printBinary(exp_array[0], 8);
-    printf("\n");
-
-    // mantissa bits
-    mantissa_bits = var.raw.mantissa >> (23 - 11);
-    // get mantissa bits (shift over 23 - # of mantissa bits)
-    printf("Mantissa bits: ");
-    printBinary(mantissa_bits, 11);
-    printf("\n");
-
-    int16_t final_16_bit = 0; // where we will store final 16 bit
-    final_16_bit = final_16_bit | signed_bit << 15; // OR with 0
-    exp_array[0] = exp_array[0] & 0xF;
-    final_16_bit = final_16_bit | exp_array[0] << 11; // shift over number of mantissa bits
-    final_16_bit = final_16_bit | mantissa_bits;
-    printf("16 bit representation: ");
-    printBinary(final_16_bit, 16);
-    printf("\n");
-
-
-    // convert back to IEEE
-    ieee.f = 0;
-    //ieee.raw.sign = signed_bit;
-    ieee.raw.sign = final_16_bit >> 15; // get signed bit 1 0000 00000000000
-    // add back in the bias
-    // if number is negative
-    printBinary(exp_array[0], 16);
-    printf("\n");
-    printBinary(exp_array[0] >> 3, 16);
-    printf("\n");
-    //printf("%d\n", exp_array[0] << 12);
-    if(exp_array[0] >> 3 != 0){
-      exp_array[0] = exp_array[0] | BITMASK;
-      printBinary(exp_array[0], 8);
-      printf("\n");
-    }
-    ieee.raw.exponent = 127 + exp_array[0];
-    // if number is positive 127 + number
-    ieee.raw.mantissa = (final_16_bit & 0x7FF) << (23 - 11); // get mantissa bits 0 0000 11111111111
-    printf("Back to IEEE: %lf\n", ieee.f);
-
-    printIEEE(ieee);
-
-
-
-
+    // convert from 16 bit to IEEE 754
+    myfloat convert_back = int16_to_ieee(convert_from);
+    printf("Back to IEEE value from 16 bit: %f\n", convert_back.f);
 
     return 0;
 }
