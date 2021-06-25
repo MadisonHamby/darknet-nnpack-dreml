@@ -104,6 +104,87 @@ void printBinary(int n, int i)
             printf("0");
     }
 }
+
+int16_t ieee_to_16(float ieee_input){
+  // Instantiate the union
+  myfloat var;
+  int16_t final_16_bit = 0; // where we will store 16 bit value
+  int mantissa_bits = 0, signed_bit = 0, exp_bits = 0;
+  var.f = ieee_input;
+
+  signed_bit = var.raw.sign; // get signed bit
+
+  exp_bits = (int)var.raw.exponent - 127; // get exponent bits and subtract the bias
+  exp_bits = exp_bits & 0xF; // AND with 0xF to clear any excess bits
+
+  mantissa_bits = var.raw.mantissa >> (23 - 11); // get mantissa bits
+
+  final_16_bit = final_16_bit | signed_bit << 15; // shift sign bit to left most bit and OR with final_16_bit
+  final_16_bit = final_16_bit | exp_bits << 11; // shift over 11 bits (number of mantissa bits)
+  final_16_bit = final_16_bit | mantissa_bits; // manitssa bits are already right-most, dont need to shift
+
+  return final_16_bit;
+}
+
+myfloat int16_to_ieee(int16_t convert_input){
+  myfloat ieee;
+  int mantissa_bits = 0, signed_bit = 0, exp_bits = 0;
+  ieee.f = 0;
+
+  ieee.raw.sign = convert_input >> 15; // get signed bit, shift to rightmost place
+
+  exp_bits = (convert_input & 0x7800) >> 11; // get exp_bits by AND with 0111100000000000 and shift to rightmost place
+
+  if(exp_bits >> 3 != 0){ // if number is negative
+    exp_bits = exp_bits | BITMASK; // fill in left bits with 1 to keep number negative
+  }
+  ieee.raw.exponent = 127 + exp_bits; // add back in the bias
+
+  ieee.raw.mantissa = (convert_input & 0x7FF) << (23 - 11); // get mantissa bits 0 0000 11111111111 and shift over
+
+  return ieee;
+
+}
+
+int8_t ieee_to_8(float ieee_input){
+  // Instantiate the union
+  myfloat var;
+  int8_t final_8_bit = 0; // where we will store 16 bit value
+  int mantissa_bits = 0, signed_bit = 0, exp_bits = 0;
+  var.f = ieee_input;
+
+  signed_bit = var.raw.sign;
+
+  exp_bits = (int)var.raw.exponent - 127; // get exponent bits and subtract the bias
+  exp_bits = exp_bits & 0xF; // AND with 0xF to clear any excess bits
+
+  mantissa_bits = var.raw.mantissa >> (23 - 3); // get mantissa bits
+
+  final_8_bit = final_8_bit | signed_bit << 7; // shift sign bit to left most bit and OR with final_16_bit
+  final_8_bit = final_8_bit | exp_bits << 3; // shift over 11 bits (number of mantissa bits)
+  final_8_bit = final_8_bit | mantissa_bits; // manitssa bits are already right-most, dont need to shift
+
+  return final_8_bit;
+}
+
+myfloat int8_to_ieee(int8_t convert_input){
+  myfloat ieee;
+  int mantissa_bits = 0, signed_bit = 0, exp_bits = 0;
+  ieee.f = 0;
+
+  ieee.raw.sign = convert_input >> 7; // get signed bit, shift to rightmost place
+
+  exp_bits = (convert_input & 0x78) >> 3; // get exp_bits by AND with 01111000and shift to rightmost place
+
+  if(exp_bits >> 3 != 0){ // if number is negative
+    exp_bits = exp_bits | BITMASK; // fill in left bits with 1 to keep number negative
+  }
+  ieee.raw.exponent = 127 + exp_bits; // add back in the bias
+
+  ieee.raw.mantissa = (convert_input & 0x7) << (23 - 3); // get mantissa bits 0 0000 11111111111 and shift over
+
+  return ieee;
+}
 // converstion functions
 // convert fixed point to double
 double fixed_to_float(fixed_point_t input){
@@ -544,6 +625,14 @@ void forward_network(network net, network_state state)
 
     state.workspace = net.workspace;
     int i;
+
+    const size_t max_int_array_size = 608 * 608 * 32 * sizeof(int);
+    const size_t max_array_size = 608 * 608 * 32 * sizeof(float);  // create maximum size array for
+    float* array0 = malloc(max_int_array_size);
+    myfloat* ieee_array = malloc(max_array_size);
+    float* orig_array = malloc(max_array_size);
+    myfloat var;
+
     for(i = 0; i < net.n; ++i){
         double start_layer_exec_time = get_time_point(); // Layer execution starting time
         state.index = i;
@@ -564,8 +653,7 @@ void forward_network(network net, network_state state)
           //fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
         }
 
-        // define array for fixed point
-        const size_t max_array_size = 608 * 608 * 32 * sizeof(float);  // create maximum size array for fixed point numbers
+
 
         size_t dest_size = max_dest_size;
 
@@ -573,45 +661,18 @@ void forward_network(network net, network_state state)
         //printf("Original Output Size: %d\n", l.outputs*sizeof(float) / 1024);
         double start_compress_time = get_time_point(); // Compression starting time
 
-        // convert to 16 bit
-        // Instantiate the union
-        const size_t max_int_array_size = 608 * 608 * 32 * sizeof(int);
-        int16_t* array0 = malloc(max_int_array_size);
-        float* ieee_array = malloc(max_array_size);
-        float* orig_array = malloc(max_array_size);
-        int signed_bit, mantissa_bits;
-        int* exp_bits = malloc(max_int_array_size);
-        ieee_to_custom final_bits = 0; // where we store final custom bit transformation
-        myfloat var;
-
-
-        for(int j = 0; j < l.outputs; j++){ // convert ieee 754 to 16 bit
-          orig_array[j] = l.output[j];
-          var.f = l.output[j];
-          signed_bit = var.raw.sign; // get signed bit
-          exp_bits[j] = (int)var.raw.exponent - 127;
-          mantissa_bits = var.raw.mantissa >> (23 - BIT_16_MANTISSA); // get mantissa bits
-          final_bits = final_bits | signed_bit << 15; // OR with 0
-          exp_bits[j] = exp_bits[j] & 0xF;
-          final_bits = final_bits | exp_bits[j] << 11; // shift over number of mantissa bits
-          final_bits = final_bits | mantissa_bits;
-          array0[j] = final_bits;
+      if(i == 1){
+          for(int j = 0; j < l.outputs; j++){ // convert ieee 754 to 16 bit
+            orig_array[j] = l.output[j]; // for debug purposes
+            array0[j] = ieee_to_8(l.output[j]);
+          }
         }
-        /* //for testing purposes:
-        printf("l.output 16 bit: ");
-        printBinary(array0[0], 16);
-        printf("\n");
-        printf("exp bits: ");
-        printBinary(exp_bits[0] + 127, 4);
-        printf("\n");
-        printf("mantissa: ");
-        printBinary((array0[0] & 0x7FF)<< (23 - 11), 23);
-        printf("\n");
-        printf("sign: ");
-        printBinary(array0[0] >> 15, 5);
-        printf("\n");
-        */
-        // POST CONVERSION SIZE GOES HERE
+      else{
+        for(int j = 0; j < l.outputs; j++){ // convert ieee 754 to 16 bit
+          array0[j] = l.output[j];
+        }
+      }
+
         post_conversion_size = ((int)sizeof(fixed_point_t) * l.outputs);
         //printf("Post Conversion size: %d\n", post_conversion_size / 1024);
 
@@ -623,11 +684,10 @@ void forward_network(network net, network_state state)
             exit(1);
         }
 
-        // COMPRESSED SIZE GOES HERE
-        compressed_size = dest_size;
+        //compressed_size = dest_size;
         //printf("Compressed size: %d\n", compressed_size / 1024);
         //printf("Compression ratio: %f\n", (float)compressed_size / (float)post_conversion_size);
-        //compression_ratio = ((float)dest_size)/(l.outputs*sizeof(fixed_point_t));
+        compression_ratio = ((float)dest_size)/(l.outputs*sizeof(fixed_point_t));
         if(compression_ratio > 1){  // throw error if compression ratio over 1
           printf("compression ratio greater than 1!\n");
           exit(1);
@@ -636,44 +696,8 @@ void forward_network(network net, network_state state)
 
         // input to decompress is dest, output is array0 when using fixed point
         //printf("dest_size before zlibDecompress: %d\n", dest_size);
-        // l.outputs*sizeof(fixed_point_t) vs dest_size
         int function_out = zlibDecompress(dest, array0, dest_size, &output_decompress_size);
         //printf("dest_size after zlibDecompress: %d\n", output_decompress_size);
-
-        // convert back to float
-        // input: array0
-        // output: l.output
-        double start_fixed_to_float_time = get_time_point();  // Float to fixed starting time
-        myfloat ieee;
-
-        for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
-          ieee.f = 0;
-          //ieee.raw.sign = signed_bit;
-          ieee.raw.sign = array0[j] >> 15; // get signed bit 1 0000 00000000000
-          if(exp_bits[j] >> 3 != 0){
-            exp_bits[j] = exp_bits[j] | BITMASK;
-          }
-          ieee.raw.exponent = 127 + exp_bits[j];
-          ieee.raw.mantissa = (array0[j] & 0x7FF) << (23 - 11); // get mantissa bits 0 0000 11111111111
-          l.output[j] = ieee.f;
-          ieee_array[j] = ieee.f;
-        }
-        if(i == 0){
-          for(int k = 0; k < 519168; k++){
-            fprintf(fp, "%f,%f\n", orig_array[k], ieee_array[k]); // after conversion
-          }
-        }
-
-
-        /*
-        printf("l.output ieee bit: ");
-        printBinary(l.output[0], 32);
-        printf("\n");
-        printf("l.output after conversion: %f\n", l.output[0]);
-        printf("size of l.output: %d\n", sizeof(l.output));
-        fixed_to_float_time = ((double)get_time_point() - start_fixed_to_float_time) / 1000;
-        final_output_size = (int)sizeof(l.output[0]) * (int)l.outputs;
-        */
 
         if(function_out != Z_OK)
         {
@@ -682,6 +706,30 @@ void forward_network(network net, network_state state)
             exit(1);
         }
 
+        // convert back to float
+        // input: array0
+        // output: l.output
+        double start_fixed_to_float_time = get_time_point();  // Float to fixed starting time
+        myfloat ieee;
+        if(i == 1){
+          for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
+            ieee_array[j] = int8_to_ieee(array0[j]);
+            l.output[j] = ieee_array[j].f;
+          }
+        }
+        else{
+          for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
+            l.output[j] = array0[j];
+          }
+        }
+        if(i == 1){
+          for(int k = 0; k < l.outputs; k++){
+            fprintf(fp, "%f,%f\n", orig_array[k], l.output[k]); // after conversion
+          }
+        }
+
+        //fixed_to_float_time = ((double)get_time_point() - start_fixed_to_float_time) / 1000;
+        final_output_size = (int)sizeof(l.output[0]) * (int)l.outputs;
 
         compression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression ending time with float to fixed added in
         //output_size = (float)output_decompress_size / 1000;
@@ -767,8 +815,9 @@ void forward_network(network net, network_state state)
 
         #ifdef compress
         if(i == 0){
-          fprintf(fp, "Default Output Size, Post-Conversion Size, Compressed Size\n");
-          //fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time\n");  // print headers to output file
+          fprintf(fp, "Before Compress, Compress, After Compress\n");
+          //fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
+          //fprintf(fp, "Default Output Size, Post-Conversion Size, Compressed Size\n");
         }
         size_t dest_size = max_dest_size;
 
