@@ -38,6 +38,7 @@
 #include "gaussian_yolo_layer.h"
 #include "upsample_layer.h"
 #include "parser.h"
+//#include "half.c"
 
 #include <string.h>
 #include "zlib.h"
@@ -642,9 +643,10 @@ void forward_network(network net, network_state state)
 
     const size_t max_int_array_size = 608 * 608 * 32 * sizeof(int);
     const size_t max_array_size = 608 * 608 * 32 * sizeof(float);  // create maximum size array for
-    float* array0 = malloc(max_int_array_size);
+    float* array0 = malloc(max_array_size);
     myfloat* ieee_array = malloc(max_array_size);
     float* orig_array = malloc(max_array_size);
+    //char* array2 = malloc(2 * max_array_size);
     myfloat var;
     int counter = 0;
 
@@ -687,13 +689,20 @@ void forward_network(network net, network_state state)
         }
 
 
-
-        post_conversion_size = ((int)sizeof(fixed_point_t) * l.outputs);
+        /*
+        // rearrange exponent and mantissa bytes to improve compression
+        for(int j = 0; j < l.outputs; j++){
+          array0[j] = ieee_to_16(l.output[j]);
+          array2[j] = array0[j] & 0x03FF; // mantissa bits (10 for 16 bit)
+          array2[j + l.outputs] = (array0[j] & 0xFC00) >> 10; // exponent and signed bits
+        }
+        */
+        post_conversion_size = ((int)sizeof(uint16_t) * l.outputs);
         //printf("Post Conversion size: %d\n", post_conversion_size / 1024);
 
         // input to compression is array0, output is dest when using fixed point
         // original input to compression is (char*)l.output, output is dest
-        if(zlibCompress(array0, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(fixed_point_t), &dest_size) != Z_OK)
+        if(zlibCompress(array0, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(uint16_t), &dest_size) != Z_OK)
         {
             printf("compression failed!\n");
             exit(1);
@@ -702,7 +711,7 @@ void forward_network(network net, network_state state)
         //compressed_size = dest_size;
         //printf("Compressed size: %d\n", compressed_size / 1024);
         //printf("Compression ratio: %f\n", (float)compressed_size / (float)post_conversion_size);
-        compression_ratio = ((float)dest_size)/(l.outputs*sizeof(fixed_point_t));
+        compression_ratio = ((float)dest_size)/(l.outputs*sizeof(uint16_t));
         if(compression_ratio > 1){  // throw error if compression ratio over 1
           printf("compression ratio greater than 1!\n");
           exit(1);
@@ -725,7 +734,14 @@ void forward_network(network net, network_state state)
         // input: array0
         // output: l.output
         double start_fixed_to_float_time = get_time_point();  // Float to fixed starting time
-        myfloat ieee;
+        // rearrange exponent and mantissa bytes back to improve compression
+        /*
+        for(int j = 0; j < l.outputs; j++){
+          array0[j] = array2[j] | (array2[j + l.outputs] << 10); // shift back exponent and signed bits, OR with mantissa
+          ieee_array[j] = int16_to_ieee(array0[j]);
+          l.output[j] = ieee_array[j].f;
+        }
+      */
 
         for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
           if(i == 0){
@@ -736,8 +752,6 @@ void forward_network(network net, network_state state)
             l.output[j] = array0[j];
           }
         }
-
-
 
         if(i == 1){
           for(int k = 0; k < l.outputs; k++){
@@ -921,6 +935,7 @@ void forward_network(network net, network_state state)
     free(array0);
     free(ieee_array);
     free(orig_array);
+    //free(array2);
 
     fclose(fp); // close file we were writing to
 }
