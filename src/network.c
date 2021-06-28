@@ -163,12 +163,13 @@ int8_t ieee_to_8(float ieee_input){
   signed_bit = var.raw.sign;
 
   exp_bits = (int)var.raw.exponent - 127; // get exponent bits and subtract the bias
-  exp_bits = exp_bits & 0xF; // AND with 0xF to clear any excess bits
+  exp_bits = MAX(-16, exp_bits); // count when this happens in darknet
+  exp_bits = exp_bits & 0x1F; // AND with 0x1F to clear any excess bits
 
-  mantissa_bits = var.raw.mantissa >> (23 - 3); // get mantissa bits
+  mantissa_bits = var.raw.mantissa >> (23 - 2); // get mantissa bits
 
   final_8_bit = final_8_bit | signed_bit << 7; // shift sign bit to left most bit and OR with final_16_bit
-  final_8_bit = final_8_bit | exp_bits << 3; // shift over 11 bits (number of mantissa bits)
+  final_8_bit = final_8_bit | exp_bits << 2; // shift over 2 bits
   final_8_bit = final_8_bit | mantissa_bits; // manitssa bits are already right-most, dont need to shift
 
   return final_8_bit;
@@ -181,14 +182,20 @@ myfloat int8_to_ieee(int8_t convert_input){
 
   ieee.raw.sign = convert_input >> 7; // get signed bit, shift to rightmost place
 
-  exp_bits = (convert_input & 0x78) >> 3; // get exp_bits by AND with 01111000and shift to rightmost place
+  exp_bits = (convert_input & 0x7F) >> 2; // get exp_bits by AND with 01111000and shift to rightmost place
 
-  if(exp_bits >> 3 != 0){ // if number is negative
+  if(exp_bits >> 4 != 0){ // if number is negative 01111100
     exp_bits = exp_bits | BITMASK; // fill in left bits with 1 to keep number negative
   }
-  ieee.raw.exponent = 127 + exp_bits; // add back in the bias
 
-  ieee.raw.mantissa = (convert_input & 0x7) << (23 - 3); // get mantissa bits 0 0000 11111111111 and shift over
+  if((convert_input & 0x7) << (23 - 2) != 0){ // handles the case of a 0
+    ieee.raw.exponent = 127 + exp_bits; // add back in the bias
+  }
+  else{
+    ieee.raw.exponent = 0; // dont add bias if the number is 0
+  }
+
+  ieee.raw.mantissa = (convert_input & 0x7) << (23 - 2); // get mantissa bits 0 0000 11111111111 and shift over
 
   return ieee;
 }
@@ -656,6 +663,7 @@ void forward_network(network net, network_state state)
         #endif
 
         #ifdef ieee_convert
+
         if(i == 0){
           fprintf(fp, "Before Compress, Compress, After Compress\n");
           //fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
@@ -911,8 +919,11 @@ void forward_network(network net, network_state state)
         }
 
     }
-    printf("0 counter is: %d\n", counter);
+
     free(dest);
+    free(array0);
+    free(ieee_array);
+    free(orig_array);
 
     fclose(fp); // close file we were writing to
 }
