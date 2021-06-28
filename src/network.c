@@ -677,18 +677,16 @@ void forward_network(network net, network_state state)
         //printf("Original Output Size: %d\n", l.outputs*sizeof(float) / 1024);
         double start_compress_time = get_time_point(); // Compression starting time
 
-
-      if(i == 0){
-          for(int j = 0; j < l.outputs; j++){ // convert ieee 754 to 16 bit
-            orig_array[j] = l.output[j]; // for debug purposes
-            array0[j] = ieee_to_8(l.output[j]);
+        for(int j = 0; j < l.outputs; j++){ // convert ieee 754 to 16 bit
+          if(i == 0){
+            array0[j] = ieee_to_16(l.output[j]);
+          }
+          else{
+            array0[j] = l.output[j];
           }
         }
-      else{
-        for(int j = 0; j < l.outputs; j++){ // convert ieee 754 to 16 bit
-          array0[j] = l.output[j];
-        }
-      }
+
+
 
         post_conversion_size = ((int)sizeof(fixed_point_t) * l.outputs);
         //printf("Post Conversion size: %d\n", post_conversion_size / 1024);
@@ -729,17 +727,16 @@ void forward_network(network net, network_state state)
         double start_fixed_to_float_time = get_time_point();  // Float to fixed starting time
         myfloat ieee;
 
-        if(i == 0){
-          for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
-            ieee_array[j] = int8_to_ieee(array0[j]);
+        for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
+          if(i == 0){
+            ieee_array[j] = int16_to_ieee(array0[j]);
             l.output[j] = ieee_array[j].f;
           }
-        }
-        else{
-          for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
+          else{
             l.output[j] = array0[j];
           }
         }
+
 
 
         if(i == 1){
