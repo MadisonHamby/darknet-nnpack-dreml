@@ -41,7 +41,7 @@
 
 #include <string.h>
 #include "zlib.h"
-
+#define MAX(a,b) (((a)>(b))?(a):(b))
 #define CHUNK	(128*1024)
 //#define CHUNK 16384
 //#define dump
@@ -115,12 +115,13 @@ int16_t ieee_to_16(float ieee_input){
   signed_bit = var.raw.sign; // get signed bit
 
   exp_bits = (int)var.raw.exponent - 127; // get exponent bits and subtract the bias
-  exp_bits = exp_bits & 0xF; // AND with 0xF to clear any excess bits
+  exp_bits = MAX(-16, exp_bits); // count when this happens in darknet
+  exp_bits = exp_bits & 0x1F; // AND with 0xF to clear any excess bits
 
-  mantissa_bits = var.raw.mantissa >> (23 - 11); // get mantissa bits
+  mantissa_bits = var.raw.mantissa >> (23 - 10); // get mantissa bits
 
   final_16_bit = final_16_bit | signed_bit << 15; // shift sign bit to left most bit and OR with final_16_bit
-  final_16_bit = final_16_bit | exp_bits << 11; // shift over 11 bits (number of mantissa bits)
+  final_16_bit = final_16_bit | exp_bits << 10; // shift over 11 bits (number of mantissa bits)
   final_16_bit = final_16_bit | mantissa_bits; // manitssa bits are already right-most, dont need to shift
 
   return final_16_bit;
@@ -133,14 +134,20 @@ myfloat int16_to_ieee(int16_t convert_input){
 
   ieee.raw.sign = convert_input >> 15; // get signed bit, shift to rightmost place
 
-  exp_bits = (convert_input & 0x7800) >> 11; // get exp_bits by AND with 0111100000000000 and shift to rightmost place
+  exp_bits = (convert_input & 0x7C00) >> 10; // get exp_bits by AND with 0111110000000000 and shift to rightmost place
 
-  if(exp_bits >> 3 != 0){ // if number is negative
+  if(exp_bits >> 4 != 0){ // if number is negative
     exp_bits = exp_bits | BITMASK; // fill in left bits with 1 to keep number negative
   }
-  ieee.raw.exponent = 127 + exp_bits; // add back in the bias
 
-  ieee.raw.mantissa = (convert_input & 0x7FF) << (23 - 11); // get mantissa bits 0 0000 11111111111 and shift over
+  if((convert_input & 0x7FF) << (23 - 10) != 0){ // handles the case of a 0
+    ieee.raw.exponent = 127 + exp_bits; // add back in the bias
+  }
+  else{
+    ieee.raw.exponent = 0; // dont add bias if the number is 0
+  }
+
+  ieee.raw.mantissa = (convert_input & 0x7FF) << (23 - 10); // get mantissa bits 0 0000 11111111111 and shift over
 
   return ieee;
 
@@ -632,6 +639,7 @@ void forward_network(network net, network_state state)
     myfloat* ieee_array = malloc(max_array_size);
     float* orig_array = malloc(max_array_size);
     myfloat var;
+    int counter = 0;
 
     for(i = 0; i < net.n; ++i){
         double start_layer_exec_time = get_time_point(); // Layer execution starting time
@@ -661,7 +669,8 @@ void forward_network(network net, network_state state)
         //printf("Original Output Size: %d\n", l.outputs*sizeof(float) / 1024);
         double start_compress_time = get_time_point(); // Compression starting time
 
-      if(i == 1){
+
+      if(i == 0){
           for(int j = 0; j < l.outputs; j++){ // convert ieee 754 to 16 bit
             orig_array[j] = l.output[j]; // for debug purposes
             array0[j] = ieee_to_8(l.output[j]);
@@ -711,7 +720,8 @@ void forward_network(network net, network_state state)
         // output: l.output
         double start_fixed_to_float_time = get_time_point();  // Float to fixed starting time
         myfloat ieee;
-        if(i == 1){
+
+        if(i == 0){
           for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
             ieee_array[j] = int8_to_ieee(array0[j]);
             l.output[j] = ieee_array[j].f;
@@ -722,6 +732,8 @@ void forward_network(network net, network_state state)
             l.output[j] = array0[j];
           }
         }
+
+
         if(i == 1){
           for(int k = 0; k < l.outputs; k++){
             fprintf(fp, "%f,%f\n", orig_array[k], l.output[k]); // after conversion
@@ -898,11 +910,8 @@ void forward_network(network net, network_state state)
           }
         }
 
-
-
-
     }
-
+    printf("0 counter is: %d\n", counter);
     free(dest);
 
     fclose(fp); // close file we were writing to
