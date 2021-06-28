@@ -45,8 +45,8 @@
 #define CHUNK	(128*1024)
 //#define CHUNK 16384
 //#define dump
-//#define compress
-#define ieee_convert
+#define compress
+//#define ieee_convert
 // If wanting to use fixed-point, uncomment #define compress_fixed and comment out #define compress
 // then change lines 54 and 55 to integer type and how many fractional bits
 // Example: If you want 11.5 change line 54 to int16_t and line 55 to 5 fractional bits
