@@ -47,11 +47,11 @@
 //#define CHUNK 16384
 //#define dump
 //#define compress
-#define ieee_convert
+//#define ieee_convert
 // If wanting to use fixed-point, uncomment #define compress_fixed and comment out #define compress
 // then change lines 54 and 55 to integer type and how many fractional bits
 // Example: If you want 11.5 change line 54 to int16_t and line 55 to 5 fractional bits
-//#define compress_fixed
+#define compress_fixed
 //#define dump
 typedef int16_t fixed_point_t; // changed to signed
 #define FIXED_POINT_FRACTIONAL_BITS 5 // macro for the number of fractional bits
@@ -59,6 +59,19 @@ typedef int16_t fixed_point_t; // changed to signed
 #define BIT_8_MANTISSA 3 // macro for mantissa bits for 8 bits
 typedef int16_t ieee_to_custom; // change int16_t  to int8_t for 8 bits
 #define BITMASK 0xFFFFFFF0
+
+int valueinarray(int val, int arr[], int num_elem)
+{
+    int i;
+    for(i = 0; i < num_elem; i++)
+    {
+        if(arr[i] == val){
+          return 1;
+        }
+
+    }
+    return 0;
+}
 
 typedef union {
 
@@ -641,15 +654,36 @@ void forward_network(network net, network_state state)
     state.workspace = net.workspace;
     int i;
 
-    const size_t max_int_array_size = 608 * 608 * 32 * sizeof(int);
+    const size_t max_int_array_size = 608 * 608 * 32 * sizeof(int16_t);
     const size_t max_array_size = 608 * 608 * 32 * sizeof(float);  // create maximum size array for
-    float* array0 = malloc(max_array_size);
+    int16_t* array0 = malloc(max_int_array_size); // change to int16 when every layer can be converted
     myfloat* ieee_array = malloc(max_array_size);
     float* orig_array = malloc(max_array_size);
+    int16_t* array2 = malloc(2 * max_int_array_size);
+    //int compress_layers[] = {0,1,2,3,4,5,6,7,8,9,10,50,51,52,53,54,55,56,57,8,59,60,95,96,97,98,99,100,101,102,103,104,106};
+    int compress_layers[110];
+    for(int i = 0; i < 5; i++){
+      compress_layers[i] = i;
+    }
+
+    compress_layers[93] = 101;
+    compress_layers[94] = 102;
+    compress_layers[95] = 103;
+    compress_layers[96] = 104;
+    compress_layers[97] = 106;
+    compress_layers[98] = 94;
+    compress_layers[99] = 95;
+    compress_layers[100] = 96;
+    compress_layers[101] = 97;
+    compress_layers[102] = 98;
+    compress_layers[103] = 99;
+    compress_layers[104] = 100;
+    compress_layers[105] = 105;
+
     //char* array2 = malloc(2 * max_array_size);
     myfloat var;
     int counter = 0;
-
+    printf("net.n: %d\n", net.n);
     for(i = 0; i < net.n; ++i){
         double start_layer_exec_time = get_time_point(); // Layer execution starting time
         state.index = i;
@@ -667,7 +701,8 @@ void forward_network(network net, network_state state)
         #ifdef ieee_convert
 
         if(i == 0){
-          fprintf(fp, "Before Compress, Compress, After Compress\n");
+          fprintf(fp, "Tensor Values for Layer 105\n");
+          fprintf(fp, "Original Tensor, Converted Tensor\n");
           //fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
         }
 
@@ -680,13 +715,18 @@ void forward_network(network net, network_state state)
         double start_compress_time = get_time_point(); // Compression starting time
 
         for(int j = 0; j < l.outputs; j++){ // convert ieee 754 to 16 bit
-          if(i == 0){
-            array0[j] = ieee_to_16(l.output[j]);
-          }
-          else{
-            array0[j] = l.output[j];
-          }
+            orig_array[j] = l.output[j];
+            //if(valueinarray(i, compress_layers, sizeof(compress_layers)/sizeof(compress_layers[0]))){
+            if(i != 93 && i != 105){
+              array0[j] = ieee_to_16(l.output[j]);
+            }
+            else{
+              array0[j] = l.output[j];
+            }
         }
+
+
+
 
 
         /*
@@ -697,12 +737,12 @@ void forward_network(network net, network_state state)
           array2[j + l.outputs] = (array0[j] & 0xFC00) >> 10; // exponent and signed bits
         }
         */
-        post_conversion_size = ((int)sizeof(uint16_t) * l.outputs);
+        post_conversion_size = ((int)sizeof(int16_t) * l.outputs);
         //printf("Post Conversion size: %d\n", post_conversion_size / 1024);
 
         // input to compression is array0, output is dest when using fixed point
         // original input to compression is (char*)l.output, output is dest
-        if(zlibCompress(array0, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(uint16_t), &dest_size) != Z_OK)
+        if(zlibCompress(array0, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK)
         {
             printf("compression failed!\n");
             exit(1);
@@ -711,11 +751,13 @@ void forward_network(network net, network_state state)
         //compressed_size = dest_size;
         //printf("Compressed size: %d\n", compressed_size / 1024);
         //printf("Compression ratio: %f\n", (float)compressed_size / (float)post_conversion_size);
-        compression_ratio = ((float)dest_size)/(l.outputs*sizeof(uint16_t));
+        compression_ratio = ((float)dest_size)/(l.outputs*sizeof(float));
+        /*
         if(compression_ratio > 1){  // throw error if compression ratio over 1
           printf("compression ratio greater than 1!\n");
           exit(1);
         }
+        */
         //printf("%d - Compression ratio: %f\n", i, compression_ratio); // Print to terminal
 
         // input to decompress is dest, output is array0 when using fixed point
@@ -743,8 +785,9 @@ void forward_network(network net, network_state state)
         }
       */
 
-        for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
-          if(i == 0){
+        for(int j = 0; j < l.outputs; j++){ // convert ieee 754 to 16 bit
+          //if(valueinarray(i, compress_layers, sizeof(compress_layers)/sizeof(compress_layers[0]))){ // if we are on a layer in the array
+          if(i != 93 && i != 105){
             ieee_array[j] = int16_to_ieee(array0[j]);
             l.output[j] = ieee_array[j].f;
           }
@@ -753,9 +796,9 @@ void forward_network(network net, network_state state)
           }
         }
 
-        if(i == 1){
+        if(i == 105){
           for(int k = 0; k < l.outputs; k++){
-            fprintf(fp, "%f,%f\n", orig_array[k], l.output[k]); // after conversion
+            fprintf(fp, "%f,%f\n", orig_array[k],l.output[k]); // after conversion
           }
         }
 
@@ -768,8 +811,8 @@ void forward_network(network net, network_state state)
 
         #ifdef compress_fixed
         if(i == 0){
-          fprintf(fp, "Default Output Size, Post-Conversion Size, Compressed Size\n");
-          //fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
+          //printf(fp, "Default Output Size, Post-Conversion Size, Compressed Size\n");
+          fprintf(fp, "Output size (KBytes),Post Conversion Size (Kbytes),Compressed Size (Kbytes),Compression-Decompression time, Float to fixed,Fixed to float,Layer Execution Time\n");  // print headers to output file
         }
 
         // define array for fixed point
@@ -788,6 +831,9 @@ void forward_network(network net, network_state state)
         double start_float_to_fixed_time = get_time_point();  // Float to fixed starting time
         for(int j = 0; j < l.outputs; j++){ // convert float to fixed point numbers
           array0[j] = float_to_fixed(l.output[j]);
+          // rearrange exponent and mantissa bytes to improve compression
+          array2[j] = array0[j] & 0x03FF; // mantissa bits (10 for 16 bit)
+          array2[j + l.outputs] = (array0[j] & 0xFC00) >> 10; // exponent and signed bits
         }
         float_to_fixed_time = ((double)get_time_point() - start_float_to_fixed_time) / 1000;
 
@@ -797,7 +843,7 @@ void forward_network(network net, network_state state)
 
         // input to compression is array0, output is dest when using fixed point
         // original input to compression is (char*)l.output, output is dest
-        if(zlibCompress(array0, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(fixed_point_t), &dest_size) != Z_OK)
+        if(zlibCompress(array2, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(fixed_point_t), &dest_size) != Z_OK)
         {
             printf("compression failed!\n");
             exit(1);
@@ -807,17 +853,17 @@ void forward_network(network net, network_state state)
         compressed_size = dest_size;
         //printf("Compressed size: %d\n", compressed_size / 1024);
         //printf("Compression ratio: %f\n", (float)compressed_size / (float)post_conversion_size);
-        //compression_ratio = ((float)dest_size)/(l.outputs*sizeof(fixed_point_t));
-        //if(compression_ratio > 1){  // throw error if compression ratio over 1
-          //printf("compression ratio greater than 1!\n");
-          //exit(1);
-        //}
+        compression_ratio = ((float)dest_size)/(l.outputs*sizeof(fixed_point_t));
+        if(compression_ratio > 1){  // throw error if compression ratio over 1
+          printf("compression ratio greater than 1!\n");
+          exit(1);
+        }
         //printf("%d - Compression ratio: %f\n", i, compression_ratio); // Print to terminal
 
         // input to decompress is dest, output is array0 when using fixed point
         //printf("dest_size before zlibDecompress: %d\n", dest_size);
         // l.outputs*sizeof(fixed_point_t) vs dest_size
-        int function_out = zlibDecompress(dest, array0, dest_size, &output_decompress_size);
+        int function_out = zlibDecompress(dest, array2, dest_size, &output_decompress_size);
         //printf("dest_size after zlibDecompress: %d\n", output_decompress_size);
 
         // convert back to float
@@ -825,9 +871,12 @@ void forward_network(network net, network_state state)
         // output: l.output
         double start_fixed_to_float_time = get_time_point();  // Float to fixed starting time
         for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
+          // rearrange exponent and mantissa bytes back to improve compression
+          array0[j] = array2[j] | (array2[j + l.outputs] << 10); // shift back exponent and signed bits, OR with mantissa
           l.output[j] = fixed_to_float(array0[j]);
         }
         fixed_to_float_time = ((double)get_time_point() - start_fixed_to_float_time) / 1000;
+        printf("fixed_to_float_time: %f\n", fixed_to_float_time);
         final_output_size = (int)sizeof(l.output[0]) * (int)l.outputs;
 
         if(function_out != Z_OK)
@@ -846,7 +895,9 @@ void forward_network(network net, network_state state)
 
         #ifdef compress
         if(i == 0){
-          fprintf(fp, "Before Compress, Compress, After Compress\n");
+          //fprintf(fp, "Before Compress, Compress, After Compress\n");
+          fprintf(fp, "Output size (KBytes),Post Conversion Size (Kbytes),Compressed Size (Kbytes),Compression-Decompression time,
+          Float to fixed,Fixed to float,Layer Execution Time\n";  // print headers to output file
           //fprintf(fp, "Output size (KBytes),Layer execution time,Compression ratio,Compression-Decompression time, Float to fixed, Fixed to float\n");  // print headers to output file
           //fprintf(fp, "Default Output Size, Post-Conversion Size, Compressed Size\n");
         }
@@ -912,20 +963,20 @@ void forward_network(network net, network_state state)
         for(int j = 0; j < sizeof(layer_nums)/sizeof(layer_nums[0]); j++){
           if(i == layer_nums[j]){ // if the layer we are on is in our layer_nums array
             //#ifdef compress_fixed
-            //fprintf(fp, "%d,", (int)(final_output_size / 1024)); // Default output size
-            //fprintf(fp, "%d,", (int)(post_conversion_size / 1024));  // Post conversion size in KBytes
-            //fprintf(fp,"%d\n", (int)(compressed_size / 1024)); // Compressed size in KBytes
+            fprintf(fp, "%d,", (int)(final_output_size / 1024)); // Default output size
+            fprintf(fp, "%d,", (int)(post_conversion_size / 1024));  // Post conversion size in KBytes
+            fprintf(fp,"%d,", (int)(compressed_size / 1024)); // Compressed size in KBytes
             //#endif
             //#ifdef compress
             //fprintf(fp, "%d,", (int)(output_decompress_size) / 1024);  // Output size in KBytes
             //#endif
-            //fprintf(fp, "%f,", layer_exec_time); // Output layer execution time
             //fprintf(fp, "%f,", compression_ratio); // Write compression ratio to csv
             //#ifdef compress_fixed
-            //fprintf(fp, "%f,", float_to_fixed_time);  // Write float to fixed time
-            //fprintf(fp, "%f,", fixed_to_float_time);  // Write fixed to float time
+            fprintf(fp, "%lf,", compression_time); // Write compression time to csv
+            fprintf(fp, "%f,", float_to_fixed_time);  // Write float to fixed time
+            fprintf(fp, "%f,", fixed_to_float_time);  // Write fixed to float time
+            fprintf(fp, "%f\n", l.forward); // Output layer execution time
             //#endif
-            //fprintf(fp, "%lf\n", compression_time); // Write compression time to csv
           }
         }
 
