@@ -85,6 +85,10 @@ int16_t ieee_to_16(float ieee_input){
   int mantissa_bits = 0, signed_bit = 0, exp_bits = 0;
   var.f = ieee_input;
 
+  if(ieee_input == 0){ // handles case of a 0
+    return final_16_bit;
+  }
+
   signed_bit = var.raw.sign; // get signed bit
 
   exp_bits = (int)var.raw.exponent - 127; // get exponent bits and subtract the bias
@@ -123,11 +127,12 @@ myfloat int16_to_ieee(int16_t convert_input){
     exp_bits = exp_bits | BITMASK; // fill in left bits with 1 to keep number negative
   }
 
-  if((convert_input & 0x7FF) << (23 - 10) != 0){ // handles the case of a 0
-    ieee.raw.exponent = 127 + exp_bits; // add back in the bias
+  if((convert_input & 0x7FF) << (23 - 10) == 0 && exp_bits == 0){ // handles the case of a 0
+    ieee.raw.exponent = 0; // dont add bias if the number is 0
   }
   else{
-    ieee.raw.exponent = 0; // dont add bias if the number is 0
+    printf("triggered\n");
+    ieee.raw.exponent = 127 + exp_bits; // add back in the bias
   }
   printf("Exponent with bias is: %d\n", ieee.raw.exponent);
   printf("Exponent bits with bias: ");
@@ -153,6 +158,10 @@ int8_t ieee_to_8(float ieee_input){
   int8_t final_8_bit = 0; // where we will store 16 bit value
   int mantissa_bits = 0, signed_bit = 0, exp_bits = 0;
   var.f = ieee_input;
+
+  if(ieee_input == 0){ // handles case of a 0
+    return final_8_bit;
+  }
 
   signed_bit = var.raw.sign;
 
@@ -193,11 +202,11 @@ myfloat int8_to_ieee(int8_t convert_input){
     exp_bits = exp_bits | BITMASK; // fill in left bits with 1 to keep number negative
   }
 
-  if((convert_input & 0x7) << (23 - 2) != 0){ // handles the case of a 0
-    ieee.raw.exponent = 127 + exp_bits; // add back in the bias
+  if((convert_input & 0x7) << (23 - 2) == 0 && exp_bits == 0){ // handles the case of a 0
+    ieee.raw.exponent = 0; // dont add bias if the number is 0
   }
   else{
-    ieee.raw.exponent = 0; // dont add bias if the number is 0
+    ieee.raw.exponent = 127 + exp_bits; // add back in the bias
   }
 
   printf("Exponent with bias is: %d\n", ieee.raw.exponent);
