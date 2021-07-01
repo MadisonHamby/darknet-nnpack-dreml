@@ -764,8 +764,8 @@ void forward_network(network net, network_state state)
         for(int j = 0; j < l.outputs; j++){ // convert float to fixed point numbers
           array0[j] = float_to_fixed(l.output[j]);
           // rearrange exponent and mantissa bytes to improve compression
-          //array2[j] = array0[j] & 0x00FF; // last byte
-          //array2[j + l.outputs] = (array0[j] & 0xFF00) >> 8; // first byte, shift over to the right 1 byte
+          array2[j] = array0[j] & 0x00FF; // last byte
+          array2[j + l.outputs] = (array0[j] & 0xFF00) >> 8; // first byte, shift over to the right 1 byte
         }
         float_to_fixed_time = ((double)get_time_point() - start_float_to_fixed_time) / 1000; // time to shuffle bytes and to convert from float to fixed
 
@@ -773,7 +773,7 @@ void forward_network(network net, network_state state)
 
         double start_compress_time = get_time_point(); // Compression starting time
 
-        if(zlibCompress(array0, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(fixed_point_t), &dest_size) != Z_OK) // compress the data
+        if(zlibCompress(array2, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(fixed_point_t), &dest_size) != Z_OK) // compress the data
         {
             printf("compression failed!\n");
             exit(1);
@@ -788,7 +788,7 @@ void forward_network(network net, network_state state)
           exit(1);
         }
 
-        if(zlibDecompress(dest, array0, dest_size, &output_decompress_size) != Z_OK)  // decompress the data
+        if(zlibDecompress(dest, array2, dest_size, &output_decompress_size) != Z_OK)  // decompress the data
         {
             printf("decompression failed!\n");
             exit(1);
@@ -800,7 +800,7 @@ void forward_network(network net, network_state state)
         double start_fixed_to_float_time = get_time_point();  // Float to fixed starting time
         for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
           // rearrange exponent and mantissa bytes back to improve compression
-          //array0[j] = (array2[j] & 0x00FF) | (array2[j + l.outputs] << 8); // get last byte, or with first byte shifted over to leftmost byte
+          array0[j] = (array2[j] & 0x00FF) | (array2[j + l.outputs] << 8); // get last byte, or with first byte shifted over to leftmost byte
           l.output[j] = fixed_to_float(array0[j]);
         }
         fixed_to_float_time = ((double)get_time_point() - start_fixed_to_float_time) / 1000;
@@ -814,17 +814,24 @@ void forward_network(network net, network_state state)
         #endif
 
         #ifdef compress
-        float* array0 = malloc(max_array_size);
+        char* array0 = malloc(2 * max_char_array_size);
 
         size_t dest_size = max_dest_size;
 
         double float_to_fixed_time = 0, fixed_to_float_time = 0; // values are 0 for just compressing data
 
+        // byte shuffle
+        for(int j = 0; j < l.outputs; j++){
+            // rearrange exponent and mantissa bytes to improve compression
+            array0[j] = l.output & 0xFFFFFF; // last 3 bytes
+            array0[j + l.outputs] = (l.output & 0xFF00) >> 24; // first byte, shift over to the right 3 bytes
+        }
+
         double start_compress_time = get_time_point(); // Compression starting time
 
         post_conversion_size = l.outputs * sizeof(float);
 
-        if(zlibCompress((char*)l.output, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK) // compress the data
+        if(zlibCompress(array0, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK) // compress the data
         {
             printf("compression failed!\n");
             exit(1);
@@ -837,7 +844,7 @@ void forward_network(network net, network_state state)
           exit(1);
         }
 
-        int function_out = zlibDecompress(dest, (char*)l.output, dest_size, &output_decompress_size);
+        int function_out = zlibDecompress(dest, array0, dest_size, &output_decompress_size);
 
         if(function_out != Z_OK)
         {
@@ -849,6 +856,11 @@ void forward_network(network net, network_state state)
         final_output_size = (int)sizeof(l.output[0]) * (int)l.outputs;
 
         compression_decompression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression and decompression ending time
+
+        for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
+          // rearrange exponent and mantissa bytes back to improve compression
+          l.output[j] = (array0[j] & 0xFFFFFF) | (array0[j + l.outputs] << 24); // get last 3 bytes, or with first byte shifted over to leftmost byte
+        }
 
         free(array0);
 
