@@ -648,7 +648,7 @@ void forward_network(network net, network_state state)
     // Choose layers towards beginning and end, only convolutional layers
     int layer_nums[18] = {0,1,9,22,25,26,50,51,62,75,76,84,91,92,100,101,104,105};
 
-    float compression_ratio, compression_decompression_time, output_size, layer_exec_time; // output_size is in KBytes
+    float compression_ratio, compression_decompression_time, output_size, layer_exec_time, start_layer_exec_time; // output_size is in KBytes
     size_t output_decompress_size;  // size of output of Decompress function
 
     const size_t max_dest_size = 608 * 608 * 32 * sizeof(float);
@@ -673,7 +673,10 @@ void forward_network(network net, network_state state)
             scal_cpu(l.outputs * l.batch, 0, l.delta, 1);
         }
 
+        // get layer execution Time
+        start_layer_exec_time = get_time_point();
         l.forward(l, state);
+        layer_exec_time = ((double)get_time_point() - start_layer_exec_time) / 1000; // layer execution time
 
         #ifdef dump
         dumpData(i,l.output,l.outputs);
@@ -689,8 +692,6 @@ void forward_network(network net, network_state state)
 
         double float_to_fixed_time, fixed_to_float_time;
 
-        double start_compress_time = get_time_point(); // Compression starting time
-
         // start float to ieee custom
         double start_float_to_fixed_time = get_time_point();  // Float to fixed starting time
         for(int j = 0; j < l.outputs; j++){ // convert ieee 754 to 16 bit
@@ -703,6 +704,8 @@ void forward_network(network net, network_state state)
         float_to_fixed_time = ((double)get_time_point() - start_float_to_fixed_time) / 1000; // time to shuffle bytes and to convert from float to fixed
 
         post_conversion_size = ((int)sizeof(int16_t) * l.outputs);
+
+        double start_compress_time = get_time_point(); // Compression starting time
 
         if(zlibCompress(array2, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK) // compress data
         {
@@ -724,6 +727,8 @@ void forward_network(network net, network_state state)
             exit(1);
         }
 
+        compression_decompression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression and decompression ending time
+
 
         double start_fixed_to_float_time = get_time_point();  // conversion starting time
 
@@ -737,8 +742,6 @@ void forward_network(network net, network_state state)
         fixed_to_float_time = ((double)get_time_point() - start_fixed_to_float_time) / 1000;
 
         final_output_size = (int)sizeof(l.output[0]) * (int)l.outputs;
-
-        compression_decompression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression and decompression ending time
 
         free(array0);
         free(array2);
@@ -756,21 +759,21 @@ void forward_network(network net, network_state state)
 
         double float_to_fixed_time, fixed_to_float_time;
 
-        double start_compress_time = get_time_point(); // Compression starting time
-
         // convert to fixed point
         double start_float_to_fixed_time = get_time_point();  // Float to fixed starting time
         for(int j = 0; j < l.outputs; j++){ // convert float to fixed point numbers
           array0[j] = float_to_fixed(l.output[j]);
           // rearrange exponent and mantissa bytes to improve compression
-          array2[j] = array0[j] & 0x00FF; // last byte
-          array2[j + l.outputs] = (array0[j] & 0xFF00) >> 8; // first byte, shift over to the right 1 byte
+          //array2[j] = array0[j] & 0x00FF; // last byte
+          //array2[j + l.outputs] = (array0[j] & 0xFF00) >> 8; // first byte, shift over to the right 1 byte
         }
         float_to_fixed_time = ((double)get_time_point() - start_float_to_fixed_time) / 1000; // time to shuffle bytes and to convert from float to fixed
 
         post_conversion_size = ((int)sizeof(fixed_point_t) * l.outputs); // size of data after converstion to fixed point
 
-        if(zlibCompress(array2, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(fixed_point_t), &dest_size) != Z_OK) // compress the data
+        double start_compress_time = get_time_point(); // Compression starting time
+
+        if(zlibCompress(array0, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(fixed_point_t), &dest_size) != Z_OK) // compress the data
         {
             printf("compression failed!\n");
             exit(1);
@@ -785,24 +788,25 @@ void forward_network(network net, network_state state)
           exit(1);
         }
 
-        if(zlibDecompress(dest, array2, dest_size, &output_decompress_size) != Z_OK)  // decompress the data
+        if(zlibDecompress(dest, array0, dest_size, &output_decompress_size) != Z_OK)  // decompress the data
         {
             printf("decompression failed!\n");
             exit(1);
         }
 
+        compression_decompression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression and decompression ending time
+
         // convert back to float
         double start_fixed_to_float_time = get_time_point();  // Float to fixed starting time
         for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
           // rearrange exponent and mantissa bytes back to improve compression
-          array0[j] = (array2[j] & 0x00FF) | (array2[j + l.outputs] << 8); // get last byte, or with first byte shifted over to leftmost byte
+          //array0[j] = (array2[j] & 0x00FF) | (array2[j + l.outputs] << 8); // get last byte, or with first byte shifted over to leftmost byte
           l.output[j] = fixed_to_float(array0[j]);
         }
         fixed_to_float_time = ((double)get_time_point() - start_fixed_to_float_time) / 1000;
 
         final_output_size = (int)sizeof(l.output[0]) * (int)l.outputs; // output size after converting back to floating point
 
-        compression_decompression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression and decompression ending time
 
         free(array0);
         free(array2);
@@ -866,7 +870,7 @@ void forward_network(network net, network_state state)
             fprintf(fp, "%lf,", compression_decompression_time); // Write compression and decompression time to csv
             fprintf(fp, "%f,", float_to_fixed_time);  // Write float to fixed time
             fprintf(fp, "%f,", fixed_to_float_time);  // Write fixed to float time
-            fprintf(fp, "%f\n", l.forward); // Output layer execution time
+            fprintf(fp, "%f\n", layer_exec_time); // Output layer execution time
           }
         }
 
