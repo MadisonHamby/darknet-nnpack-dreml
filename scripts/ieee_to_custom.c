@@ -126,7 +126,7 @@ myfloat int16_to_ieee(int16_t convert_input){
   if(exp_bits >> 4 != 0){ // if number is negative
     exp_bits = exp_bits | BITMASK; // fill in left bits with 1 to keep number negative
   }
-
+  //4.0000000567
   if((convert_input & 0x7FF) << (23 - 10) == 0 && exp_bits == 0){ // handles the case of a 0
     ieee.raw.exponent = 0; // dont add bias if the number is 0
   }

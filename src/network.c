@@ -41,7 +41,7 @@
 //#include "half.c"
 
 #include <string.h>
-#include "zlib.h"
+#include "zlib-1.2.11/zlib.h"
 #define MAX(a,b) (((a)>(b))?(a):(b))
 #define CHUNK	(128*1024)
 //#define CHUNK 16384
