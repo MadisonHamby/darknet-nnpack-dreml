@@ -647,6 +647,7 @@ void forward_network(network net, network_state state)
     // Array containing layers we want to save
     // Choose layers towards beginning and end, only convolutional layers
     int layer_nums[18] = {0,1,9,22,25,26,50,51,62,75,76,84,91,92,100,101,104,105};
+    int compress_layer[20] = {0,1,9,26};
 
     float compression_ratio, compression_decompression_time, output_size, layer_exec_time, start_layer_exec_time; // output_size is in KBytes
     size_t output_decompress_size;  // size of output of Decompress function
@@ -665,6 +666,7 @@ void forward_network(network net, network_state state)
     const size_t max_myfloat_array_size = 608 * 608 * 32 * sizeof(myfloat);
 
     myfloat var;
+    double total_latency = 0;
 
     for(i = 0; i < net.n; ++i){
         double start_layer_exec_time = get_time_point(); // Layer execution starting time
@@ -692,56 +694,66 @@ void forward_network(network net, network_state state)
         float* orig_array = malloc(max_array_size);
         myfloat* ieee_array = malloc(max_myfloat_array_size);
 
-        double float_to_fixed_time, fixed_to_float_time;
+        double float_to_fixed_time = 0, fixed_to_float_time = 0;
+        compression_decompression_time = 0;
 
-        // start float to ieee custom
-        double start_float_to_fixed_time = get_time_point();  // Float to fixed starting time
-        for(int j = 0; j < l.outputs; j++){ // convert ieee 754 to 16 bit
-            //orig_array[j] = l.output[j]; // for tensor debug purposes
-            array0[j] = ieee_to_16(l.output[j]);
-            // rearrange exponent and mantissa bytes to improve compression
-            array2[j] = array0[j] & 0x00FF; // last byte
-            array2[j + l.outputs] = (array0[j] & 0xFF00) >> 8; // first byte, shift over to the right 1 byte
-        }
-        float_to_fixed_time = ((double)get_time_point() - start_float_to_fixed_time) / 1000; // time to shuffle bytes and to convert from float to fixed
+        if(valueinarray(i, compress_layer, sizeof(compress_layer)/sizeof(compress_layer[0]))){
 
-        post_conversion_size = ((int)sizeof(int16_t) * l.outputs);
+          // start float to ieee custom
+          double start_float_to_fixed_time = get_time_point();  // Float to fixed starting time
+          for(int j = 0; j < l.outputs; j++){ // convert ieee 754 to 16 bit
 
-        double start_compress_time = get_time_point(); // Compression starting time
+                //orig_array[j] = l.output[j]; // for tensor debug purposes
+                array0[j] = ieee_to_16(l.output[j]);
+                // rearrange exponent and mantissa bytes to improve compression
+                array2[j] = array0[j] & 0x00FF; // last byte
+                array2[j + l.outputs] = (array0[j] & 0xFF00) >> 8; // first byte, shift over to the right 1 byte
 
-        if(zlibCompress(array2, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK) // compress data
-        {
-            printf("compression failed!\n");
+          }
+          float_to_fixed_time = ((double)get_time_point() - start_float_to_fixed_time) / 1000; // time to shuffle bytes and to convert from float to fixed
+
+          post_conversion_size = ((int)sizeof(int16_t) * l.outputs);
+
+          double start_compress_time = get_time_point(); // Compression starting time
+
+          if(zlibCompress(array2, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK) // compress data
+          {
+              printf("compression failed!\n");
+              exit(1);
+          }
+
+          if(compression_ratio > 1){  // throw error if compression ratio over 1
+            printf("compression ratio greater than 1!\n");
             exit(1);
+          }
+
+          compressed_size = dest_size;
+
+
+          if(zlibDecompress(dest, array2, dest_size, &output_decompress_size) != Z_OK)  // decompress data
+          {
+              printf("decompression failed!\n");
+              exit(1);
+          }
+
+          compression_decompression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression and decompression ending time
+
+
+
+          double start_fixed_to_float_time = get_time_point();  // conversion starting time
+
+          for(int j = 0; j < l.outputs; j++){ // convert ieee 754 to 16 bit
+            array0[j] = (array2[j] & 0x00FF) | (array2[j + l.outputs] << 8); // get last byte, or with first byte shifted over to leftmost byte
+            ieee_array[j] = int16_to_ieee(array0[j]);
+            l.output[j] = ieee_array[j].f;
+
+          }
+
+          fixed_to_float_time = ((double)get_time_point() - start_fixed_to_float_time) / 1000;
         }
-
-        if(compression_ratio > 1){  // throw error if compression ratio over 1
-          printf("compression ratio greater than 1!\n");
-          exit(1);
+        else{
+          post_conversion_size = ((int)sizeof(float) * l.outputs); // conversion size if data is not 16 bit ieee format
         }
-
-        compressed_size = dest_size;
-
-
-        if(zlibDecompress(dest, array2, dest_size, &output_decompress_size) != Z_OK)  // decompress data
-        {
-            printf("decompression failed!\n");
-            exit(1);
-        }
-
-        compression_decompression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression and decompression ending time
-
-
-        double start_fixed_to_float_time = get_time_point();  // conversion starting time
-
-        for(int j = 0; j < l.outputs; j++){ // convert ieee 754 to 16 bit
-          array0[j] = (array2[j] & 0x00FF) | (array2[j + l.outputs] << 8); // get last byte, or with first byte shifted over to leftmost byte
-          ieee_array[j] = int16_to_ieee(array0[j]);
-          l.output[j] = ieee_array[j].f;
-
-        }
-
-        fixed_to_float_time = ((double)get_time_point() - start_fixed_to_float_time) / 1000;
 
         final_output_size = (int)sizeof(l.output[0]) * (int)l.outputs;
 
@@ -760,55 +772,61 @@ void forward_network(network net, network_state state)
 
         size_t dest_size = max_dest_size;
 
-        double float_to_fixed_time, fixed_to_float_time;
+        double float_to_fixed_time = 0, fixed_to_float_time = 0;
 
-        // convert to fixed point
-        double start_float_to_fixed_time = get_time_point();  // Float to fixed starting time
-        for(int j = 0; j < l.outputs; j++){ // convert float to fixed point numbers
-          array0[j] = float_to_fixed(l.output[j]);
-          // rearrange exponent and mantissa bytes to improve compression
-          array2[j] = array0[j] & 0x00FF; // last byte
-          array2[j + l.outputs] = (array0[j] & 0xFF00) >> 8; // first byte, shift over to the right 1 byte
-        }
-        float_to_fixed_time = ((double)get_time_point() - start_float_to_fixed_time) / 1000; // time to shuffle bytes and to convert from float to fixed
+        if(valueinarray(i, compress_layer, sizeof(compress_layer)/sizeof(compress_layer[0]))){
+          // convert to fixed point
+          double start_float_to_fixed_time = get_time_point();  // Float to fixed starting time
+          for(int j = 0; j < l.outputs; j++){ // convert float to fixed point numbers
+            array0[j] = float_to_fixed(l.output[j]);
+            // rearrange exponent and mantissa bytes to improve compression
+            array2[j] = array0[j] & 0x00FF; // last byte
+            array2[j + l.outputs] = (array0[j] & 0xFF00) >> 8; // first byte, shift over to the right 1 byte
+          }
+          float_to_fixed_time = ((double)get_time_point() - start_float_to_fixed_time) / 1000; // time to shuffle bytes and to convert from float to fixed
 
-        post_conversion_size = ((int)sizeof(fixed_point_t) * l.outputs); // size of data after converstion to fixed point
+          post_conversion_size = ((int)sizeof(fixed_point_t) * l.outputs); // size of data after converstion to fixed point
 
-        double start_compress_time = get_time_point(); // Compression starting time
+          double start_compress_time = get_time_point(); // Compression starting time
 
-        if(zlibCompress(array2, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(fixed_point_t), &dest_size) != Z_OK) // compress the data
-        {
-            printf("compression failed!\n");
+          if(zlibCompress(array2, dest, Z_DEFAULT_COMPRESSION, l.outputs*sizeof(fixed_point_t), &dest_size) != Z_OK) // compress the data
+          {
+              printf("compression failed!\n");
+              exit(1);
+          }
+
+
+          compressed_size = dest_size;
+
+          compression_ratio = ((float)dest_size)/(l.outputs*sizeof(fixed_point_t));
+          if(compression_ratio > 1){  // throw error if compression ratio over 1
+            printf("compression ratio greater than 1!\n");
             exit(1);
+          }
+
+          if(zlibDecompress(dest, array2, dest_size, &output_decompress_size) != Z_OK)  // decompress the data
+          {
+              printf("decompression failed!\n");
+              exit(1);
+          }
+
+          compression_decompression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression and decompression ending time
+
+          // convert back to float
+          double start_fixed_to_float_time = get_time_point();  // Float to fixed starting time
+          for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
+            // rearrange exponent and mantissa bytes back to improve compression
+            array0[j] = (array2[j] & 0x00FF) | (array2[j + l.outputs] << 8); // get last byte, or with first byte shifted over to leftmost byte
+            l.output[j] = fixed_to_float(array0[j]);
+          }
+          fixed_to_float_time = ((double)get_time_point() - start_fixed_to_float_time) / 1000;
         }
-
-
-        compressed_size = dest_size;
-
-        compression_ratio = ((float)dest_size)/(l.outputs*sizeof(fixed_point_t));
-        if(compression_ratio > 1){  // throw error if compression ratio over 1
-          printf("compression ratio greater than 1!\n");
-          exit(1);
+        else{
+          post_conversion_size = ((int)sizeof(float) * l.outputs); // conversion size if data is not 16 bit ieee format
         }
-
-        if(zlibDecompress(dest, array2, dest_size, &output_decompress_size) != Z_OK)  // decompress the data
-        {
-            printf("decompression failed!\n");
-            exit(1);
-        }
-
-        compression_decompression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression and decompression ending time
-
-        // convert back to float
-        double start_fixed_to_float_time = get_time_point();  // Float to fixed starting time
-        for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
-          // rearrange exponent and mantissa bytes back to improve compression
-          array0[j] = (array2[j] & 0x00FF) | (array2[j + l.outputs] << 8); // get last byte, or with first byte shifted over to leftmost byte
-          l.output[j] = fixed_to_float(array0[j]);
-        }
-        fixed_to_float_time = ((double)get_time_point() - start_fixed_to_float_time) / 1000;
 
         final_output_size = (int)sizeof(l.output[0]) * (int)l.outputs; // output size after converting back to floating point
+
 
 
         free(array0);
@@ -823,68 +841,75 @@ void forward_network(network net, network_state state)
 
         size_t dest_size = max_dest_size;
 
-        double float_to_fixed_time,fixed_to_float_time; // values are 0 for just compressing data
+        double float_to_fixed_time = 0,fixed_to_float_time = 0; // values are 0 for just compressing data
 
-        // byte shuffle
-        double start_float_to_fixed_time = get_time_point();  // Byte shuffle starting time
-        for(int j = 0; j < l.outputs; j++){
-            // rearrange exponent and mantissa bytes to improve compression
-            ieee_num.f = l.output[j];
-            before_sep = ieee_num.raw.sign << 31 | ieee_num.raw.exponent << 23 | ieee_num.raw.mantissa; // 32 bit ieee format
-            //seperate first byte
-            array0[j*4] = (before_sep & 0xFF000000) >> 24; //j*4 is our offset
-            // seperate last 3 bytes
-            bytes_3 = (before_sep & 0x00FFFFFF);
-            array0[j*4 + 1] = bytes_3 >> 16;
-            array0[j*4 + 2] = bytes_3 >> 8;
-            array0[j*4 + 3] = bytes_3;
-        }
-        float_to_fixed_time = ((double)get_time_point() - start_float_to_fixed_time) / 1000; // time to shuffle bytes
-        double start_compress_time = get_time_point(); // Compression starting time
+        if(valueinarray(i, compress_layer, sizeof(compress_layer)/sizeof(compress_layer[0]))){
+          // byte shuffle
+          double start_float_to_fixed_time = get_time_point();  // Byte shuffle starting time
+          for(int j = 0; j < l.outputs; j++){
+              // rearrange exponent and mantissa bytes to improve compression
+              ieee_num.f = l.output[j];
+              before_sep = ieee_num.raw.sign << 31 | ieee_num.raw.exponent << 23 | ieee_num.raw.mantissa; // 32 bit ieee format
+              //seperate first byte
+              array0[j*4] = (before_sep & 0xFF000000) >> 24; //j*4 is our offset
+              // seperate last 3 bytes
+              bytes_3 = (before_sep & 0x00FFFFFF);
+              array0[j*4 + 1] = bytes_3 >> 16;
+              array0[j*4 + 2] = bytes_3 >> 8;
+              array0[j*4 + 3] = bytes_3;
+          }
+          float_to_fixed_time = ((double)get_time_point() - start_float_to_fixed_time) / 1000; // time to shuffle bytes
+          double start_compress_time = get_time_point(); // Compression starting time
 
-        post_conversion_size = l.outputs * sizeof(float);
+          post_conversion_size = l.outputs * sizeof(float);
 
-        // (char*)l.output is first input to function if not doing byte reordering
-        if(zlibCompress(array0, dest,Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK) // compress the data
-        {
-            printf("compression failed!\n");
+          // (char*)l.output is first input to function if not doing byte reordering
+          if(zlibCompress(array0, dest,Z_DEFAULT_COMPRESSION, l.outputs*sizeof(float), &dest_size) != Z_OK) // compress the data
+          {
+              printf("compression failed!\n");
+              exit(1);
+          }
+
+          compressed_size = dest_size;
+
+          if(compression_ratio > 1){  // throw error if compression ratio over 1
+            printf("compression ratio greater than 1!\n");
             exit(1);
+          }
+
+          //(char*)l.output is second input to function if not using byte reordering
+          if(zlibDecompress(dest, array0, dest_size, &output_decompress_size) != Z_OK)
+          {
+              printf("decompression failed!\n");
+              exit(1);
+          }
+
+          final_output_size = (int)sizeof(l.output[0]) * (int)l.outputs;
+
+          compression_decompression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression and decompression ending time
+          double start_fixed_to_float_time = get_time_point();  // shuffle back starting time
+          for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
+            // rearrange exponent and mantissa bytes back to improve compression
+            // put first byte back
+            output_var = array0[j*4] << 24; // offset is j + j*4
+            // put last three bytes back
+            output_var = output_var | (array0[j*4 + 1] & 0xFF) << 16;
+            output_var = output_var | (array0[j*4 + 2] & 0xFF) << 8;
+            output_var = output_var | (array0[j*4 + 3] & 0xFF);
+            // convert back to float
+            ieee_num.raw.sign = (output_var & 0x80000000) >> 31;
+            ieee_num.raw.exponent = (output_var & 0x7F800000) >> 23;
+            ieee_num.raw.mantissa = output_var & 0x007FFFFF;
+            l.output[j] = ieee_num.f;
+
+          }
+          fixed_to_float_time = ((double)get_time_point() - start_fixed_to_float_time) / 1000; // shuffe back ending Time
         }
 
-        compressed_size = dest_size;
-
-        if(compression_ratio > 1){  // throw error if compression ratio over 1
-          printf("compression ratio greater than 1!\n");
-          exit(1);
+        else{
+          post_conversion_size = ((int)sizeof(float) * l.outputs); // conversion size if data is not 16 bit ieee format
         }
 
-        //(char*)l.output is second input to function if not using byte reordering
-        if(zlibDecompress(dest, array0, dest_size, &output_decompress_size) != Z_OK)
-        {
-            printf("decompression failed!\n");
-            exit(1);
-        }
-
-        final_output_size = (int)sizeof(l.output[0]) * (int)l.outputs;
-
-        compression_decompression_time = ((double)get_time_point() - start_compress_time) / 1000; // Compression and decompression ending time
-        double start_fixed_to_float_time = get_time_point();  // shuffle back starting time
-        for(int j = 0; j < l.outputs; j++){ // convert fixed back to float
-          // rearrange exponent and mantissa bytes back to improve compression
-          // put first byte back
-          output_var = array0[j*4] << 24; // offset is j + j*4
-          // put last three bytes back
-          output_var = output_var | (array0[j*4 + 1] & 0xFF) << 16;
-          output_var = output_var | (array0[j*4 + 2] & 0xFF) << 8;
-          output_var = output_var | (array0[j*4 + 3] & 0xFF);
-          // convert back to float
-          ieee_num.raw.sign = (output_var & 0x80000000) >> 31;
-          ieee_num.raw.exponent = (output_var & 0x7F800000) >> 23;
-          ieee_num.raw.mantissa = output_var & 0x007FFFFF;
-          l.output[j] = ieee_num.f;
-
-        }
-        fixed_to_float_time = ((double)get_time_point() - start_fixed_to_float_time) / 1000; // shuffe back ending Time
 
         free(array0);
 
@@ -910,11 +935,20 @@ void forward_network(network net, network_state state)
           }
         }
 
+        if(valueinarray(i, compress_layer, sizeof(compress_layer)/sizeof(compress_layer[0]))){
+          total_latency = total_latency + (compressed_size*((1024*8)/(65*1000000))*1000); // gives total latency
+        }
+        else{
+          total_latency = total_latency + ((post_conversion_size*1024*8)/(65*1000000))*1000;
+        }
+
     }
 
     free(dest);
 
     fclose(fp); // close file we were writing to
+
+    printf("total latency is: %f\n", total_latency);
 }
 
 void update_network(network net)
